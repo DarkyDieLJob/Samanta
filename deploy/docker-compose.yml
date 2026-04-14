@@ -1,0 +1,95 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: rag-ollama
+    restart: unless-stopped
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11435:11434"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  model-init:
+    image: curlimages/curl:8.6.0
+    container_name: rag-model-init
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+    env_file:
+      - .env
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      set -e
+      CHAT_MODEL="${MODEL_NAME:-qwen3:8b}"
+      EMBED_MODEL="${EMBEDDING_MODEL_NAME:-nomic-embed-text}"
+      echo "📥 Descargando modelo de chat: $CHAT_MODEL"
+      curl -sS -X POST "$OLLAMA_HOST/api/pull" -d "{\"name\":\"$CHAT_MODEL\"}"
+      echo "📥 Descargando modelo de embeddings: $EMBED_MODEL"
+      curl -sS -X POST "$OLLAMA_HOST/api/pull" -d "{\"name\":\"$EMBED_MODEL\"}"
+
+  app:
+    build:
+      context: ./app
+    container_name: rag-app
+    restart: unless-stopped
+    depends_on:
+      ollama:
+        condition: service_healthy
+      model-init:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      - DOCUMENTS_PATH=/data/markdown
+      - VECTORSTORE_PATH=/data/vectorstore
+      - LOG_PATH=/logs
+    volumes:
+      - ./app:/app/src:ro
+      - ./data/markdown:/data/markdown:ro
+      - ./data/vectorstore:/data/vectorstore
+      - ./logs:/logs
+    ports:
+      - "7860:7860"
+    command: ["uv", "run", "python", "-m", "samanta_rag.main"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  refresher:
+    build:
+      context: ./app
+    container_name: rag-refresh
+    restart: unless-stopped
+    depends_on:
+      ollama:
+        condition: service_healthy
+      model-init:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      - DOCUMENTS_PATH=/data/markdown
+      - VECTORSTORE_PATH=/data/vectorstore
+      - LOG_PATH=/logs
+    volumes:
+      - ./app:/app/src:ro
+      - ./data/markdown:/data/markdown:ro
+      - ./data/vectorstore:/data/vectorstore
+      - ./logs:/logs
+    command: ["uv", "run", "python", "-m", "samanta_rag.ingest", "--watch"]
+
+volumes:
+  ollama_data:

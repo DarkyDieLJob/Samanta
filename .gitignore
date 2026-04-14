@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtualenv
+.venv/
+.env
+.env.local
+.env.*
+!.env.example
+.envrc
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Editors / OS
+.vscode/
+.idea/
+*.code-workspace
+.DS_Store
+Thumbs.db
+
+# Project data & logs
+deploy/data/vectorstore/
+deploy/data/markdown/*
+!deploy/data/markdown/001_la_ferreteria.md
+deploy/data/markdown/README.txt
+deploy/logs/
+*.log
+
+# Docker
+**/docker-compose.override.yml
+
