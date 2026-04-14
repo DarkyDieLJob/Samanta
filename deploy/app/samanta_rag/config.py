@@ -63,6 +63,12 @@ class Settings:
 
 def get_settings() -> Settings:
     """Crea un objeto de configuración a partir de variables de entorno."""
+    # Normaliza VECTORSTORE_PATH para evitar apuntar al raíz del volumen
+    _raw_vectorstore = os.getenv("VECTORSTORE_PATH", str(Settings.vectorstore_path))
+    _vectorstore_path = Path(_raw_vectorstore).resolve()
+    if _vectorstore_path == Path("/data/vectorstore").resolve():
+        _vectorstore_path = _vectorstore_path / "index"
+
     return Settings(
         env=os.getenv("ENV", Settings.env),
         ollama_base_url=os.getenv("OLLAMA_BASE_URL", Settings.ollama_base_url),
@@ -74,7 +80,7 @@ def get_settings() -> Settings:
         chunk_overlap=int(os.getenv("CHUNK_OVERLAP", Settings.chunk_overlap)),
         retrieval_k=int(os.getenv("RETRIEVAL_K", Settings.retrieval_k)),
         documents_path=Path(os.getenv("DOCUMENTS_PATH", str(Settings.documents_path))).resolve(),
-        vectorstore_path=Path(os.getenv("VECTORSTORE_PATH", str(Settings.vectorstore_path))).resolve(),
+        vectorstore_path=_vectorstore_path,
         log_path=Path(os.getenv("LOG_PATH", str(Settings.log_path))).resolve(),
         max_concurrent_sessions=int(
             os.getenv("MAX_CONCURRENT_SESSIONS", Settings.max_concurrent_sessions)
