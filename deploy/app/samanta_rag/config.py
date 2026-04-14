@@ -42,6 +42,13 @@ class Settings:
     ollama_base_url: str = "http://ollama:11434"
     model_name: str = "qwen3:8b"
     temperature: float = 0.3
+    # Mensaje de sistema por defecto (puede ser sobrescrito por SYSTEM_PROMPT)
+    system_prompt: str = (
+        "Eres un asistente para clientes de un negocio local. "
+        "Usa exclusivamente la información proporcionada en el contexto. "
+        "Si no encuentras la respuesta en el contexto, responde que no sabes "
+        "y sugiere contactar con un humano del negocio."
+    )
     embedding_model_name: str = "nomic-embed-text"
     chunk_size: int = 500
     chunk_overlap: int = 50
@@ -61,6 +68,7 @@ def get_settings() -> Settings:
         ollama_base_url=os.getenv("OLLAMA_BASE_URL", Settings.ollama_base_url),
         model_name=os.getenv("MODEL_NAME", Settings.model_name),
         temperature=float(os.getenv("TEMPERATURE", Settings.temperature)),
+        system_prompt=os.getenv("SYSTEM_PROMPT", Settings.system_prompt),
         embedding_model_name=os.getenv("EMBEDDING_MODEL_NAME", Settings.embedding_model_name),
         chunk_size=int(os.getenv("CHUNK_SIZE", Settings.chunk_size)),
         chunk_overlap=int(os.getenv("CHUNK_OVERLAP", Settings.chunk_overlap)),

@@ -28,7 +28,6 @@ Thumbs.db
 
 # Project data & logs
 deploy/data/vectorstore/
-deploy/data/markdown/*
 !deploy/data/markdown/001_la_ferreteria.md
 deploy/data/markdown/README.txt
 deploy/logs/

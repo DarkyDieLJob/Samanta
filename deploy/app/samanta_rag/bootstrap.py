@@ -24,12 +24,7 @@ def create_container() -> AppContainer:
         [
             (
                 "system",
-                (
-                    "Eres un asistente para clientes de un negocio local."
-                    " Usa exclusivamente la información proporcionada en el contexto."
-                    " Si no encuentras la respuesta en el contexto, responde que no sabes"
-                    " y sugiere contactar con un humano del negocio."
-                ),
+                settings.system_prompt,
             ),
             ("human", "Pregunta: {question}\n\nContexto:\n{context}"),
         ]
