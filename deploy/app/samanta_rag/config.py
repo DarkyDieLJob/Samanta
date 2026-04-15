@@ -54,7 +54,7 @@ class Settings:
     chunk_overlap: int = 50
     retrieval_k: int = 4
     documents_path: Path = Path("/data/markdown")
-    vectorstore_path: Path = Path("/data/vectorstore/index")
+    vectorstore_path: Path = Path("/data/vectorstore")
     log_path: Path = Path("/logs")
     max_concurrent_sessions: int = 5
     allowed_ips: Tuple[str, ...] = ()
