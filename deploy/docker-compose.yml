@@ -56,8 +56,8 @@ services:
     volumes:
       - ./app:/app/src:ro
       - ./data/markdown:/data/markdown:ro
-      - ./data/vectorstore:/data/vectorstore
-      - ./logs:/logs
+      - ./data/vectorstore:/data/vectorstore:Z
+      - ./logs:/logs:Z
     ports:
       - "7860:7860"
     command: ["uv", "run", "python", "-m", "samanta_rag.main"]
