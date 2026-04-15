@@ -21,6 +21,7 @@ from langchain_text_splitters import (
     MarkdownHeaderTextSplitter,
 )
 from langchain_ollama import OllamaEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
@@ -201,7 +202,11 @@ def build_vectorstore(
     if not documents:
         LOGGER.warning("No se encontraron documentos para indexar. Se mantiene el índice anterior.")
         return None
-    embeddings = OllamaEmbeddings(model=settings.embedding_model_name, base_url=settings.ollama_base_url)
+    # Selección de embeddings según proveedor
+    if settings.llm_provider == "openai" and settings.openai_api_key:
+        embeddings = OpenAIEmbeddings(model=settings.embedding_model_name, api_key=settings.openai_api_key)
+    else:
+        embeddings = OllamaEmbeddings(model=settings.embedding_model_name, base_url=settings.ollama_base_url)
     vectorstore = FAISS.from_documents(documents, embeddings)
     # Manejo seguro de borrado en raíces montadas
     safe_path = vectorstore_path
