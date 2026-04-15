@@ -16,7 +16,10 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_text_splitters import (
+    RecursiveCharacterTextSplitter,
+    MarkdownHeaderTextSplitter,
+)
 from langchain_ollama import OllamaEmbeddings
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
@@ -87,7 +90,16 @@ def collect_markdown_documents(root: Path) -> List[Path]:
 
 
 def load_documents(files: Iterable[Path], base_path: Path) -> Tuple[List[Document], List[FileMetadata]]:
-    splitter = RecursiveCharacterTextSplitter(
+    """Carga documentos Markdown y los divide respetando secciones por encabezados.
+
+    - Primero divide por encabezados (h1, h2, h3) para preservar contexto semántico.
+    - Luego aplica un splitter recursivo para ajustar a chunk_size/overlap.
+    - Propaga metadatos como source y headers a cada chunk.
+    """
+    section_splitter = MarkdownHeaderTextSplitter(
+        headers_to_split_on=[("#", "h1"), ("##", "h2"), ("###", "h3")]
+    )
+    chunk_splitter = RecursiveCharacterTextSplitter(
         chunk_size=settings.chunk_size,
         chunk_overlap=settings.chunk_overlap,
     )
@@ -104,23 +116,36 @@ def load_documents(files: Iterable[Path], base_path: Path) -> Tuple[List[Documen
             continue
         rel_path = file_path.relative_to(base_path)
         content_hash = hash_text(text)
-        chunks = splitter.split_text(text)
+        # Divide en secciones por encabezados
+        sections = section_splitter.split_text(text)
+        section_docs: List[Document] = []
+        for sec in sections:
+            sec_text = sec.page_content
+            # Metadatos de encabezados (si existen)
+            header_meta = {k: v for k, v in sec.metadata.items() if k in {"h1", "h2", "h3"}}
+            # Chunks por sección
+            chunks = chunk_splitter.split_text(sec_text)
+            for chunk in chunks:
+                metadata = {
+                    "source": str(rel_path),
+                    "mtime": file_path.stat().st_mtime,
+                    "hash": content_hash,
+                    **header_meta,
+                }
+                section_docs.append(Document(page_content=chunk, metadata=metadata))
+
         metadata_entries.append(
             FileMetadata(
                 source=str(rel_path),
                 hash=content_hash,
                 mtime=file_path.stat().st_mtime,
-                chunk_count=len(chunks),
+                chunk_count=len(section_docs),
             )
         )
-        metadata_base = {
-            "source": str(rel_path),
-            "mtime": file_path.stat().st_mtime,
-            "hash": content_hash,
-        }
-        for idx, chunk in enumerate(chunks):
-            metadata = metadata_base | {"chunk_index": idx}
-            documents.append(Document(page_content=chunk, metadata=metadata))
+        # Añade índice de chunk
+        for idx, doc in enumerate(section_docs):
+            doc.metadata["chunk_index"] = idx
+            documents.append(doc)
     return documents, metadata_entries
 
 
