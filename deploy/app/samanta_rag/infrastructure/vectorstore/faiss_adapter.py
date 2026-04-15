@@ -12,6 +12,7 @@ from typing import List, Optional
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 from langchain_ollama import OllamaEmbeddings
+from langchain_openai import OpenAIEmbeddings
 
 from ...constants import METADATA_FILENAME
 from ...domain.entities import RetrievedDocument, VectorStorePort, VectorStoreSummary
@@ -49,7 +50,12 @@ class FAISSVectorStoreAdapter(VectorStorePort):
         if not self._vectorstore_path.exists():
             LOGGER.warning("El directorio de vectorstore %s no existe", self._vectorstore_path)
             return None
-        embeddings = OllamaEmbeddings(model=self._embedding_model_name, base_url=self._base_url)
+        # Selección de embeddings según proveedor
+        from ...config import settings
+        if settings.llm_provider == "openai" and settings.openai_api_key:
+            embeddings = OpenAIEmbeddings(model=self._embedding_model_name, api_key=settings.openai_api_key)
+        else:
+            embeddings = OllamaEmbeddings(model=self._embedding_model_name, base_url=self._base_url)
         return FAISS.load_local(
             folder_path=str(self._vectorstore_path),
             embeddings=embeddings,

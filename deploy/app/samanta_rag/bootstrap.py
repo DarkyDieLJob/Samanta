@@ -9,7 +9,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from .application.query_handler import QueryHandler
 from .config import Settings, settings
 from .domain.services import QueryService
-from .infrastructure.llm.ollama_adapter import OllamaChatModel
+from .infrastructure.llm.ollama_adapter import OllamaChatModel, OpenAIChatModel
 from .infrastructure.vectorstore.faiss_adapter import FAISSVectorStoreAdapter
 
 
@@ -34,12 +34,20 @@ def create_container() -> AppContainer:
         embedding_model_name=settings.embedding_model_name,
         base_url=settings.ollama_base_url,
     )
-    chat_model = OllamaChatModel(
-        model_name=settings.model_name,
-        temperature=settings.temperature,
-        base_url=settings.ollama_base_url,
-        prompt=prompt,
-    )
+    if settings.llm_provider == "openai" and settings.openai_api_key:
+        chat_model = OpenAIChatModel(
+            model_name=settings.model_name,
+            temperature=settings.temperature,
+            prompt=prompt,
+            api_key=settings.openai_api_key,
+        )
+    else:
+        chat_model = OllamaChatModel(
+            model_name=settings.model_name,
+            temperature=settings.temperature,
+            base_url=settings.ollama_base_url,
+            prompt=prompt,
+        )
     query_service = QueryService(vectorstore=vectorstore_adapter, chat_model=chat_model, top_k=settings.retrieval_k)
     query_handler = QueryHandler(query_service=query_service)
     return AppContainer(settings=settings, query_handler=query_handler)

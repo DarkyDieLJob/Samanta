@@ -40,6 +40,7 @@ def _parse_example_questions(raw_value: str) -> Tuple[str, ...]:
 class Settings:
     env: Literal["production", "staging", "development"] = "production"
     ollama_base_url: str = "http://ollama:11434"
+    llm_provider: Literal["ollama", "openai"] = "ollama"
     model_name: str = "qwen3:8b"
     temperature: float = 0.3
     # Mensaje de sistema por defecto (puede ser sobrescrito por SYSTEM_PROMPT)
@@ -59,6 +60,8 @@ class Settings:
     max_concurrent_sessions: int = 5
     allowed_ips: Tuple[str, ...] = ()
     example_questions: Tuple[str, ...] = ()
+    # OpenAI
+    openai_api_key: str = ""
 
 
 def get_settings() -> Settings:
@@ -66,6 +69,7 @@ def get_settings() -> Settings:
     return Settings(
         env=os.getenv("ENV", Settings.env),
         ollama_base_url=os.getenv("OLLAMA_BASE_URL", Settings.ollama_base_url),
+        llm_provider=os.getenv("LLM_PROVIDER", Settings.llm_provider),
         model_name=os.getenv("MODEL_NAME", Settings.model_name),
         temperature=float(os.getenv("TEMPERATURE", Settings.temperature)),
         system_prompt=os.getenv("SYSTEM_PROMPT", Settings.system_prompt),
@@ -81,6 +85,7 @@ def get_settings() -> Settings:
         ),
         allowed_ips=_parse_allowed_ips(os.getenv("ALLOWED_IPS", "*")),
         example_questions=_parse_example_questions(os.getenv("EXAMPLE_QUESTIONS", "")),
+        openai_api_key=os.getenv("OPENAI_API_KEY", ""),
     )
 
 
