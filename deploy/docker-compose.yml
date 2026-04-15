@@ -87,8 +87,8 @@ services:
     volumes:
       - ./app:/app/src:ro
       - ./data/markdown:/data/markdown:ro
-      - ./data/vectorstore:/data/vectorstore
-      - ./logs:/logs
+      - ./data/vectorstore:/data/vectorstore:Z
+      - ./logs:/logs:Z
     command: ["uv", "run", "python", "-m", "samanta_rag.ingest", "--watch"]
 
 volumes:
