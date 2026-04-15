@@ -51,7 +51,7 @@ services:
       - .env
     environment:
       - DOCUMENTS_PATH=${DOCUMENTS_PATH:-/data/markdown}
-      - VECTORSTORE_PATH=${VECTORSTORE_PATH:-/data/vectorstore/index}
+      - VECTORSTORE_PATH=${VECTORSTORE_PATH:-/data/vectorstore}
       - LOG_PATH=${LOG_PATH:-/logs}
     volumes:
       - ./app:/app/src:ro
@@ -82,7 +82,7 @@ services:
       - .env
     environment:
       - DOCUMENTS_PATH=${DOCUMENTS_PATH:-/data/markdown}
-      - VECTORSTORE_PATH=${VECTORSTORE_PATH:-/data/vectorstore/index}
+      - VECTORSTORE_PATH=${VECTORSTORE_PATH:-/data/vectorstore}
       - LOG_PATH=${LOG_PATH:-/logs}
     volumes:
       - ./app:/app/src:ro
