@@ -10,11 +10,21 @@ links:
 
 # Menú – Empanadas
 
-## Sabores (placeholders)
-- Carne suave — Por confirmar
-- Jamón y queso — Por confirmar
-- Caprese — Por confirmar (veg)
-- Humita — Por confirmar (veg)
+## Sabores
+
+### Clásicas
+- Empanada de Carne — (-)
+- Empanada de Humita — (-)
+- Empanada de Jamón y Queso — (-)
+- Empanada de Pollo — (-)
+- Empanada de Roque — (-)
+- Empanada de Verdura — (-)
+
+### Gourmet
+- Empanada de Carne Cortada a Cuchillo — (-)
+- Empanada de Cerdo con Salsa Barbacoa — (-)
+- Empanada de Harina Integral Brócoli y Champiñones — (Brócoli y Champiñones)
+- Fatay — (-)
 
 ## Contexto para IA
 - **Etiquetas**: veg | picante | sin tacc (si aplica)
