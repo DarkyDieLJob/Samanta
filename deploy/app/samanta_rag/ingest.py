@@ -178,12 +178,22 @@ def build_vectorstore(
         return None
     embeddings = OllamaEmbeddings(model=settings.embedding_model_name, base_url=settings.ollama_base_url)
     vectorstore = FAISS.from_documents(documents, embeddings)
-    # Evita borrar la raíz del volumen montado
+    # Manejo seguro de borrado en raíces montadas
     safe_path = vectorstore_path
-    if vectorstore_path.resolve() == Path("/data/vectorstore").resolve():
-        safe_path = vectorstore_path / "index"
+    mount_roots = {Path("/data/vectorstore").resolve()}
     if safe_path.exists():
-        shutil.rmtree(safe_path)
+        if safe_path.resolve() in mount_roots:
+            # Borrar solo el contenido dentro del directorio montado
+            for child in safe_path.iterdir():
+                if child.is_dir():
+                    shutil.rmtree(child)
+                else:
+                    try:
+                        child.unlink()
+                    except FileNotFoundError:
+                        pass
+        else:
+            shutil.rmtree(safe_path)
     safe_path.mkdir(parents=True, exist_ok=True)
     vectorstore.save_local(str(safe_path))
     persist_metadata(safe_path, metadata_entries)
