@@ -53,6 +53,13 @@ services:
       - DOCUMENTS_PATH=${DOCUMENTS_PATH:-/data/markdown}
       - VECTORSTORE_PATH=${VECTORSTORE_PATH:-/data/vectorstore}
       - LOG_PATH=${LOG_PATH:-/logs}
+      - APP_TIMEZONE=${APP_TIMEZONE:-UTC}
+      - RAG_FAISS_TOPK=${RAG_FAISS_TOPK:-0}
+      - MCP_REGISTRY_JSON
+      - MCP_REGISTRY_PATH
+      # Tokens por proveedor MCP (definir en .env según corresponda)
+      - MCP_TOKEN_EVENTOS_DRF
+      - MCP_TOKEN_TEATRO_BAR
     volumes:
       - ./app:/app/src:ro
       - ./data/markdown:/data/markdown:ro
@@ -84,6 +91,13 @@ services:
       - DOCUMENTS_PATH=${DOCUMENTS_PATH:-/data/markdown}
       - VECTORSTORE_PATH=${VECTORSTORE_PATH:-/data/vectorstore}
       - LOG_PATH=${LOG_PATH:-/logs}
+      - APP_TIMEZONE=${APP_TIMEZONE:-UTC}
+      - RAG_FAISS_TOPK=${RAG_FAISS_TOPK:-0}
+      - MCP_REGISTRY_JSON
+      - MCP_REGISTRY_PATH
+      # Tokens por proveedor MCP (definir en .env según corresponda)
+      - MCP_TOKEN_EVENTOS_DRF
+      - MCP_TOKEN_TEATRO_BAR
     volumes:
       - ./app:/app/src:ro
       - ./data/markdown:/data/markdown:ro

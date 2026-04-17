@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Dict
+from typing import Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ...application.query_handler import QueryHandler
 from .dependencies import get_query_handler, get_settings
+from ...mcp.registry import load_registry_from_env
+from ...mcp.client import MCPClient, MCPClientError, MCPProvider
 
 router = APIRouter()
 
@@ -43,6 +45,42 @@ async def status(handler: QueryHandler = Depends(get_query_handler)) -> Dict[str
     settings = get_settings()
     allowed_ips = list(settings.allowed_ips) if settings.allowed_ips else ["*"]
     return {"status": status, "summary": summary, "allowed_ips": allowed_ips}
+
+
+@router.get("/api/mcp/teatro-bar/health", response_model=Dict[str, object])
+async def mcp_teatro_bar_health() -> Dict[str, object]:
+    """Prueba de conectividad contra teatro-bar.health.ping.
+
+    Devuelve un objeto con { provider, ok, details } y maneja fallbacks de forma segura.
+    """
+    registry = load_registry_from_env()
+    if not registry:
+        raise HTTPException(status_code=503, detail="MCP deshabilitado por configuración")
+    provider_cfg: Optional[object] = next((p for p in registry.providers if p.name == "teatro-bar"), None)
+    if provider_cfg is None:
+        raise HTTPException(status_code=404, detail="Proveedor teatro-bar no registrado")
+    # map dataclass ProviderConfig -> MCPProvider expected by client
+    p = provider_cfg  # type: ignore[assignment]
+    provider = MCPProvider(
+        name=p.name,  # type: ignore[attr-defined]
+        endpoint=p.endpoint,  # type: ignore[attr-defined]
+        token_env=p.token_env,  # type: ignore[attr-defined]
+        timeout_seconds=p.timeout_seconds,  # type: ignore[attr-defined]
+        max_retries=p.max_retries,  # type: ignore[attr-defined]
+    )
+    client = MCPClient(provider)
+    try:
+        resp = client.health_ping()
+        ok = bool(resp.get("status") == "ok")
+        return {"provider": provider.name, "ok": ok, "details": resp}
+    except MCPClientError as exc:
+        # Fallback: no inventar datos, reportar indisponibilidad breve
+        return {
+            "provider": provider.name,
+            "ok": False,
+            "details": {"error": str(exc)},
+            "message": "Fuera de servicio temporalmente (eventos en vivo: teatro-bar)",
+        }
 
 
 @router.post("/api/query", response_model=QueryResponseSchema)

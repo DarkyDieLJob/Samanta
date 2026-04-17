@@ -62,6 +62,9 @@ class Settings:
     example_questions: Tuple[str, ...] = ()
     # OpenAI
     openai_api_key: str = ""
+    # Zona horaria de la app y top-k para degradación FAISS (opcional)
+    app_timezone: str = "UTC"
+    rag_faiss_topk: int = 0
 
 
 def get_settings() -> Settings:
@@ -86,6 +89,8 @@ def get_settings() -> Settings:
         allowed_ips=_parse_allowed_ips(os.getenv("ALLOWED_IPS", "*")),
         example_questions=_parse_example_questions(os.getenv("EXAMPLE_QUESTIONS", "")),
         openai_api_key=os.getenv("OPENAI_API_KEY", ""),
+        app_timezone=os.getenv("APP_TIMEZONE", Settings.app_timezone),
+        rag_faiss_topk=int(os.getenv("RAG_FAISS_TOPK", Settings.rag_faiss_topk)),
     )
 
 
