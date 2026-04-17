@@ -1,0 +1,37 @@
+{
+  "providers": [
+    {
+      "name": "teatro-bar",
+      "endpoint_env": "MCP_TEATRO_BAR_ENDPOINT",
+      "token_env": "MCP_TOKEN_TEATRO_BAR",
+      "timeout_seconds": 5,
+      "max_retries": 1,
+      "preferred": true,
+      "required": true,
+      "tools": [
+        "events.this_week",
+        "events.past",
+        "events.future",
+        "events.by_id",
+        "health.ping"
+      ],
+      "domains": ["eventos"],
+      "keywords": [
+        "evento",
+        "eventos",
+        "hoy",
+        "mañana",
+        "semana",
+        "pasados",
+        "próximos",
+        "futuros",
+        "mes que viene",
+        "show",
+        "cena",
+        "baile",
+        "artistas"
+      ]
+    }
+  ],
+  "defaults": { "timeout_seconds": 5, "max_retries": 1 }
+}

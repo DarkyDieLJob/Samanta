@@ -75,10 +75,23 @@ def _parse_defaults(obj: dict) -> Defaults:
 def _parse_provider(obj: dict, defaults: Defaults) -> ProviderConfig:
     try:
         name = str(obj["name"]).strip()
-        endpoint = str(obj["endpoint"]).strip()
+        # Permitir endpoint por literal o por variable de entorno usando 'endpoint_env'
+        raw_endpoint = str(obj.get("endpoint", "")).strip()
+        endpoint_env = str(obj.get("endpoint_env", "")).strip()
         token_env = str(obj["token_env"]).strip()
     except KeyError as e:
         raise MCPRegistryError(f"Proveedor mal definido, falta la clave: {e}") from e
+
+    # Resolver endpoint según precedencia: endpoint_env > endpoint literal
+    if endpoint_env:
+        resolved = os.getenv(endpoint_env, "").strip()
+        if not resolved:
+            raise MCPRegistryError(
+                f"La variable de entorno del endpoint '{endpoint_env}' no está definida o está vacía"
+            )
+        endpoint = resolved
+    else:
+        endpoint = raw_endpoint
 
     _ensure_wss(endpoint)
     _require_env_var(token_env)
