@@ -28,7 +28,14 @@ class QueryResponseSchema(BaseModel):
 async def health(handler: QueryHandler = Depends(get_query_handler)) -> Dict[str, object]:
     summary = handler.summary().to_dict()
     status = "ok" if handler.is_available() else "missing_index"
-    return {"status": status, "summary": summary}
+    registry = handler.mcp_registry_summary()
+    metrics = handler.mcp_metrics_snapshot()
+    return {
+        "status": status,
+        "summary": summary,
+        "mcp": registry,
+        "mcp_metrics": metrics,
+    }
 
 
 @router.post("/api/reload", response_model=Dict[str, str])
@@ -67,10 +74,15 @@ async def mcp_teatro_bar_health() -> Dict[str, object]:
         token_env=p.token_env,  # type: ignore[attr-defined]
         timeout_seconds=p.timeout_seconds,  # type: ignore[attr-defined]
         max_retries=p.max_retries,  # type: ignore[attr-defined]
+        preferred=p.preferred,  # type: ignore[attr-defined]
+        required=p.required,  # type: ignore[attr-defined]
+        tools_whitelist=p.tools,  # type: ignore[attr-defined]
+        domains=p.domains,  # type: ignore[attr-defined]
+        keywords=p.keywords,  # type: ignore[attr-defined]
     )
     client = MCPClient(provider)
     try:
-        resp = client.health_ping()
+        resp = await client.health_ping()
         ok = bool(resp.get("status") == "ok")
         return {"provider": provider.name, "ok": ok, "details": resp}
     except MCPClientError as exc:

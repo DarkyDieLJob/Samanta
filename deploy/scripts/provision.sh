@@ -20,15 +20,17 @@ fi
 DATA_DIR="$DEPLOY_ROOT/data"
 MARKDOWN_DIR="$DATA_DIR/markdown"
 VECTORSTORE_DIR="$DATA_DIR/vectorstore"
+MCP_DIR="$DATA_DIR/mcp"
 LOG_DIR="$DEPLOY_ROOT/logs"
 
-mkdir -p "$MARKDOWN_DIR" "$VECTORSTORE_DIR" "$LOG_DIR"
-chmod 755 "$MARKDOWN_DIR" "$VECTORSTORE_DIR" "$LOG_DIR"
+mkdir -p "$MARKDOWN_DIR" "$VECTORSTORE_DIR" "$MCP_DIR" "$LOG_DIR"
+chmod 755 "$MARKDOWN_DIR" "$VECTORSTORE_DIR" "$MCP_DIR" "$LOG_DIR"
 
 echo "📁 Directorios preparados:"
 echo "  - $MARKDOWN_DIR"
 echo "  - $VECTORSTORE_DIR"
 echo "  - $LOG_DIR"
+echo "  - $MCP_DIR (almacena registry MCP si usas MCP_REGISTRY_PATH)"
 
 if [[ ! -s "$MARKDOWN_DIR"/001_la_ferreteria.md ]]; then
   cat <<'EOF' >"$MARKDOWN_DIR/README.txt"

@@ -57,6 +57,7 @@ services:
       - RAG_FAISS_TOPK=${RAG_FAISS_TOPK:-0}
       - MCP_REGISTRY_JSON
       - MCP_REGISTRY_PATH
+      - MCP_CA_BUNDLE
       # Tokens por proveedor MCP (definir en .env según corresponda)
       - MCP_TOKEN_EVENTOS_DRF
       - MCP_TOKEN_TEATRO_BAR
@@ -64,6 +65,7 @@ services:
       - ./app:/app/src:ro
       - ./data/markdown:/data/markdown:ro
       - ./data/vectorstore:/data/vectorstore:Z
+      - ./data/mcp:/data/mcp:ro
       - ./logs:/logs:Z
     ports:
       - "7860:7860"
@@ -95,6 +97,7 @@ services:
       - RAG_FAISS_TOPK=${RAG_FAISS_TOPK:-0}
       - MCP_REGISTRY_JSON
       - MCP_REGISTRY_PATH
+      - MCP_CA_BUNDLE
       # Tokens por proveedor MCP (definir en .env según corresponda)
       - MCP_TOKEN_EVENTOS_DRF
       - MCP_TOKEN_TEATRO_BAR
@@ -102,6 +105,7 @@ services:
       - ./app:/app/src:ro
       - ./data/markdown:/data/markdown:ro
       - ./data/vectorstore:/data/vectorstore:Z
+      - ./data/mcp:/data/mcp:ro
       - ./logs:/logs:Z
     command: ["uv", "run", "python", "-m", "samanta_rag.ingest", "--watch"]
 

@@ -8,6 +8,7 @@ Implementación de un asistente conversacional basado en Retrieval Augmented Gen
 - FastAPI para la API HTTP y Gradio para la interfaz web conversacional.
 - Ingesta incremental de documentos Markdown en un vector store FAISS.
 - Integración con Ollama (modelos `qwen3:8b` y `nomic-embed-text`).
+- Consumo de proveedores MCP vía WebSocket con ruteo dinámico por intención, fallback a FAISS y observabilidad (métricas p50/p95/p99 por herramienta).
 - Scripts de ayuda para provisión, ingesta y diagnósticos.
 
 ## Requisitos
@@ -68,7 +69,8 @@ Samanta/
 │   ├── docker-compose.yml  # Orquestación de servicios
 │   └── scripts/            # Scripts auxiliares
 ├── INSTRUCTIVO.md          # Descripción funcional original del proyecto
-└── README.md               # Esta guía de despliegue y uso
+├── README.md               # Esta guía de despliegue y uso
+└── deploy/data/mcp/        # Directorio montado para registry/tokens MCP (se crea con provision.sh)
 ```
 
 ## Desarrollo local
@@ -80,6 +82,26 @@ Para detener el stack:
 ```bash
 docker compose -f deploy/docker-compose.yml down
 ```
+
+## Variables clave para MCP
+
+- `MCP_REGISTRY_JSON`: JSON inline con la definición de proveedores (prioridad sobre el archivo).
+- `MCP_REGISTRY_PATH`: Ruta dentro del contenedor (por defecto `/data/mcp/registry.json`).
+- `MCP_TOKEN_<PROVEEDOR>`: Token Bearer para cada proveedor configurado.
+- `MCP_CA_BUNDLE`: Ruta a un bundle PEM opcional si necesitas confiar en una CA privada.
+- `RAG_FAISS_TOPK`: Cantidad de documentos adicionales a recuperar cuando el router cae a FAISS.
+
+> Usa `deploy/scripts/provision.sh` para generar `.env` y crear `deploy/data/mcp/` junto al resto de volúmenes.
+
+## Smoke test después del deploy
+
+Una vez que los contenedores estén arriba (`docker compose up -d`), comprueba:
+
+```bash
+curl -s http://localhost:7860/health | jq '{status, mcp: .mcp.enabled, metrics: (.mcp_metrics[0] // {})}'
+```
+
+Deberías ver `status: "ok"`, `mcp: true` cuando haya registro MCP válido, y latencias en `metrics`. Si falla algún proveedor, la respuesta mostrará el último error y se degradará automáticamente a FAISS.
 
 ## Licencia
 

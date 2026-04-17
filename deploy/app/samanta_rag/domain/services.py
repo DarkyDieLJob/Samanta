@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 
 from .entities import (
     ChatModelPort,
@@ -38,10 +38,13 @@ class QueryService:
         self._chat_model = chat_model
         self._top_k = top_k
 
-    def run(self, question: str) -> QueryResult:
+    def run(self, question: str, *, top_k: Optional[int] = None) -> QueryResult:
         if not self._vectorstore.is_available():
             raise RuntimeError("Vectorstore no disponible")
-        documents = self._vectorstore.retrieve(question, self._top_k)
+        effective_k = self._top_k
+        if top_k is not None and top_k > 0:
+            effective_k = top_k
+        documents = self._vectorstore.retrieve(question, effective_k)
         if not documents:
             raise RuntimeError("No se encontraron documentos relevantes")
         context = format_context(documents)
