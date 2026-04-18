@@ -58,6 +58,7 @@ services:
       - MCP_REGISTRY_JSON
       - MCP_REGISTRY_PATH
       - MCP_CA_BUNDLE
+      - PYTHONPATH=/app/src
       # Tokens por proveedor MCP (definir en .env según corresponda)
       - MCP_TOKEN_EVENTOS_DRF
       - MCP_TOKEN_TEATRO_BAR
@@ -98,6 +99,7 @@ services:
       - MCP_REGISTRY_JSON
       - MCP_REGISTRY_PATH
       - MCP_CA_BUNDLE
+      - PYTHONPATH=/app/src
       # Tokens por proveedor MCP (definir en .env según corresponda)
       - MCP_TOKEN_EVENTOS_DRF
       - MCP_TOKEN_TEATRO_BAR
