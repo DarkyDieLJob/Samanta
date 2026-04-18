@@ -24,8 +24,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-import websockets
-from websockets.exceptions import WebSocketException
+import httpx
 
 
 LOGGER = logging.getLogger(__name__)
@@ -99,7 +98,9 @@ class MCPClient:
         self._timeout = max(1, provider.timeout_seconds)
         self._max_retries = max(0, provider.max_retries)
         self._request_id = request_id or str(uuid.uuid4())
-        self._ssl_context = _build_ssl_context()
+        # httpx usa verify=True (CA del sistema) o ruta a bundle personalizado
+        custom_ca = os.getenv("MCP_CA_BUNDLE", "").strip()
+        self._httpx_verify: bool | str = custom_ca or True
 
     async def list_tools(self) -> List[MCPToolInfo]:
         response = await self._send_with_retry({"type": "list_tools", "request_id": self._request_id})
@@ -133,7 +134,7 @@ class MCPClient:
         for attempt in range(self._max_retries + 1):
             try:
                 return await self._send_once(payload)
-            except (asyncio.TimeoutError, WebSocketException, MCPClientError, json.JSONDecodeError) as exc:
+            except (asyncio.TimeoutError, httpx.HTTPError, MCPClientError, json.JSONDecodeError) as exc:
                 last_exc = exc
                 if attempt >= self._max_retries:
                     break
@@ -154,15 +155,9 @@ class MCPClient:
             "User-Agent": _DEFAULT_USER_AGENT,
             "X-Request-ID": self._request_id,
         }
-        async with websockets.connect(
-            self._provider.endpoint,
-            extra_headers=headers,
-            ssl=self._ssl_context,
-            open_timeout=self._timeout,
-            close_timeout=self._timeout,
-            ping_timeout=self._timeout,
-        ) as ws:
-            await asyncio.wait_for(ws.send(json.dumps(payload)), timeout=self._timeout)
-            raw = await asyncio.wait_for(ws.recv(), timeout=self._timeout)
+        async with httpx.AsyncClient(timeout=self._timeout, verify=self._httpx_verify) as client:
+            async with client.websocket_connect(self._provider.endpoint, headers=headers) as ws:
+                await ws.send_text(json.dumps(payload))
+                raw = await ws.receive_text()
         data = json.loads(raw)
         return _ensure_dict(data)
