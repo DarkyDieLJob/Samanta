@@ -195,4 +195,4 @@ class MCPRouter:
                     return "\n".join(lines)
         raw = json.dumps(payload, ensure_ascii=False, indent=2) if isinstance(payload, (dict, list)) else str(payload)
         return raw[:_MAX_CONTEXT_CHARS]
-*** End of File
+
