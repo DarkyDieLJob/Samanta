@@ -24,7 +24,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-import httpx
+import websockets
+from websockets.exceptions import WebSocketException
 
 
 LOGGER = logging.getLogger(__name__)
@@ -98,9 +99,8 @@ class MCPClient:
         self._timeout = max(1, provider.timeout_seconds)
         self._max_retries = max(0, provider.max_retries)
         self._request_id = request_id or str(uuid.uuid4())
-        # httpx usa verify=True (CA del sistema) o ruta a bundle personalizado
-        custom_ca = os.getenv("MCP_CA_BUNDLE", "").strip()
-        self._httpx_verify: bool | str = custom_ca or True
+        # SSL context (CA del sistema o CA personalizada si MCP_CA_BUNDLE está definida)
+        self._ssl_context = _build_ssl_context()
 
     async def list_tools(self) -> List[MCPToolInfo]:
         response = await self._send_with_retry({"type": "list_tools", "request_id": self._request_id})
@@ -134,7 +134,7 @@ class MCPClient:
         for attempt in range(self._max_retries + 1):
             try:
                 return await self._send_once(payload)
-            except (asyncio.TimeoutError, httpx.HTTPError, MCPClientError, json.JSONDecodeError) as exc:
+            except (asyncio.TimeoutError, WebSocketException, MCPClientError, json.JSONDecodeError, OSError) as exc:
                 last_exc = exc
                 if attempt >= self._max_retries:
                     break
@@ -155,9 +155,16 @@ class MCPClient:
             "User-Agent": _DEFAULT_USER_AGENT,
             "X-Request-ID": self._request_id,
         }
-        async with httpx.AsyncClient(timeout=self._timeout, verify=self._httpx_verify) as client:
-            async with client.websocket_connect(self._provider.endpoint, headers=headers) as ws:
-                await ws.send_text(json.dumps(payload))
-                raw = await ws.receive_text()
+        # websockets.connect no acepta dict en extra_headers; usar lista de tuplas
+        header_list = [(k, v) for k, v in headers.items()]
+        connect_coro = websockets.connect(
+            self._provider.endpoint,
+            extra_headers=header_list,
+            ssl=self._ssl_context,
+        )
+        # Aplicar timeout a la conexión inicial
+        async with await asyncio.wait_for(connect_coro, timeout=self._timeout) as ws:
+            await asyncio.wait_for(ws.send(json.dumps(payload)), timeout=self._timeout)
+            raw = await asyncio.wait_for(ws.recv(), timeout=self._timeout)
         data = json.loads(raw)
         return _ensure_dict(data)
