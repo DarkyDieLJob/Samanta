@@ -24,8 +24,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-import websockets
-from websockets.exceptions import WebSocketException
+import aiohttp
 
 
 LOGGER = logging.getLogger(__name__)
@@ -134,7 +133,7 @@ class MCPClient:
         for attempt in range(self._max_retries + 1):
             try:
                 return await self._send_once(payload)
-            except (asyncio.TimeoutError, WebSocketException, MCPClientError, json.JSONDecodeError, OSError) as exc:
+            except (asyncio.TimeoutError, aiohttp.ClientError, MCPClientError, json.JSONDecodeError, OSError) as exc:
                 last_exc = exc
                 if attempt >= self._max_retries:
                     break
@@ -155,16 +154,16 @@ class MCPClient:
             "User-Agent": _DEFAULT_USER_AGENT,
             "X-Request-ID": self._request_id,
         }
-        # websockets.connect no acepta dict en extra_headers; usar lista de tuplas
-        header_list = [(k, v) for k, v in headers.items()]
-        connect_coro = websockets.connect(
-            self._provider.endpoint,
-            extra_headers=header_list,
-            ssl=self._ssl_context,
-        )
-        # Aplicar timeout a la conexión inicial
-        async with await asyncio.wait_for(connect_coro, timeout=self._timeout) as ws:
-            await asyncio.wait_for(ws.send(json.dumps(payload)), timeout=self._timeout)
-            raw = await asyncio.wait_for(ws.recv(), timeout=self._timeout)
+        timeout = aiohttp.ClientTimeout(total=self._timeout)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.ws_connect(self._provider.endpoint, headers=headers, ssl=self._ssl_context, autoping=True) as ws:
+                await ws.send_str(json.dumps(payload))
+                msg = await ws.receive(timeout=self._timeout)
+                if msg.type == aiohttp.WSMsgType.TEXT:
+                    raw = msg.data
+                elif msg.type == aiohttp.WSMsgType.BINARY:
+                    raw = msg.data.decode("utf-8", errors="replace")
+                else:
+                    raise MCPClientError(f"Respuesta WS inesperada: {msg.type}")
         data = json.loads(raw)
         return _ensure_dict(data)

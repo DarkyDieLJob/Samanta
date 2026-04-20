@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.6
 
-FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim AS base
+FROM python:3.11-slim-bookworm AS base
 
 WORKDIR /app
 
@@ -11,18 +11,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
+# Instalar uv (gestor de paquetes rápido) y preparar entorno
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && ln -s /root/.local/bin/uv /usr/local/bin/uv
+ENV VIRTUAL_ENV=/app/.venv
+ENV PATH="${VIRTUAL_ENV}/bin:${PATH}:/root/.local/bin"
+
+# Copiar código y metadata de proyecto
 COPY pyproject.toml ./
 COPY samanta_rag ./samanta_rag
 
+# Resolver e instalar dependencias del proyecto con uv (crea /app/.venv)
 RUN uv sync --all-extras
 
 FROM base AS runtime
 
 WORKDIR /app
 
-COPY --from=base /app/.venv /app/.venv
 ENV VIRTUAL_ENV=/app/.venv
-ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
+ENV PATH="${VIRTUAL_ENV}/bin:${PATH}:/root/.local/bin"
 
 EXPOSE 7860
 
