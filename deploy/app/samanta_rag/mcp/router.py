@@ -85,7 +85,9 @@ class MCPRouter:
             client = MCPClient(tool.provider)
             try:
                 start = time.perf_counter()
-                payload = _run_blocking(lambda: client.call_tool(tool.tool_name, self._build_arguments(question)))
+                payload = _run_blocking(
+                    lambda: client.call_tool(tool.tool_name, self._build_arguments(question, tool))
+                )
             except MCPClientError as exc:
                 LOGGER.warning("Fallo tool %s.%s: %s", tool.provider.name, tool.tool_name, exc)
                 self._metrics.record_failure(tool.provider.name, tool.tool_name, status="error", error_message=str(exc))
@@ -156,11 +158,17 @@ class MCPRouter:
         )
         return [c.tool for c in group]
 
-    def _build_arguments(self, question: str) -> Dict[str, object]:
+    def _build_arguments(self, question: str, tool: RegisteredTool) -> Dict[str, object]:
+        name = tool.tool_name.lower()
+        if name.startswith("events."):
+            return {
+                "q": question,
+                "limit": 10,
+            }
+        if name == "health.ping":
+            return {}
         return {
-            "question": question,
-            "query": question,
-            "limit": 10,
+            "q": question,
         }
 
     def _build_result(self, question: str, tool: RegisteredTool, payload: object) -> QueryResult:

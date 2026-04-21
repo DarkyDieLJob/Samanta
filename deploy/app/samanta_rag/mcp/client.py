@@ -1,34 +1,36 @@
-"""Cliente MCP genérico sobre WebSocket (WSS) con autenticación Bearer.
+"""Cliente MCP genérico usando el SDK oficial vía WebSocket (WSS).
 
 Responsabilidades:
-- Crear conexiones TLS (verificando certificado) y adjuntar cabeceras estándar.
+- Crear sesiones MCP reales (initialize -> call_tool/list_tools) respetando el
+  protocolo del SDK oficial.
 - Manejar timeouts y reintentos configurables por proveedor.
-- Exponer operaciones para descubrir herramientas (`list_tools`) y ejecutar
-  herramientas (`call_tool`/`health_ping`).
-- Proveer metadatos básicos de las herramientas remotas.
-
-Contrato de payloads:
-- `list_tools`: envía `{"type": "list_tools"}` y espera `{ "tools": [...] }`.
-- `call_tool`: envía `{"type": "call_tool", "tool": "name", "params": {...}}`.
-  (Se incluyen campos duplicados para compatibilidad hacia atrás.)
+- Inyectar automáticamente credenciales (`token`, `token_internal`) en los
+  argumentos esperados por el servidor.
+- Exponer operaciones de descubrimiento (`list_tools`) y ejecución
+  (`call_tool`/`health_ping`).
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import ssl
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, TypeVar
 
-import aiohttp
+try:  # pragma: no cover - la disponibilidad depende del entorno de despliegue
+    from mcp.client.session import ClientSession  # type: ignore
+    from mcp.client.websocket import websocket_client  # type: ignore
+except Exception:  # pragma: no cover - mostramos mensaje amigable más adelante
+    ClientSession = None  # type: ignore
+    websocket_client = None  # type: ignore
 
 
 LOGGER = logging.getLogger(__name__)
-_DEFAULT_USER_AGENT = "Samanta-RAG/0.2.0"
+_SDK_INSTALL_HINT = "pip install 'mcp>=1.2.0'"
+_ReturnType = TypeVar("_ReturnType")
 
 
 class MCPClientError(RuntimeError):
@@ -76,18 +78,39 @@ class MCPToolInfo:
         return cls(name=name, description=description, input_schema=input_schema, metadata=raw)
 
 
-def _build_ssl_context() -> ssl.SSLContext:
-    context = ssl.create_default_context()
+def _build_ssl_context() -> Optional[ssl.SSLContext]:
+    """Construye contexto SSL opcional en base a MCP_CA_BUNDLE."""
+
     custom_ca = os.getenv("MCP_CA_BUNDLE", "").strip()
-    if custom_ca:
-        context.load_verify_locations(cafile=custom_ca)
+    if not custom_ca:
+        return None
+    context = ssl.create_default_context()
+    context.load_verify_locations(cafile=custom_ca)
     return context
 
 
-def _ensure_dict(payload: Any) -> Dict[str, Any]:
-    if not isinstance(payload, dict):
-        raise MCPClientError("Respuesta inválida del MCP (se esperaba objeto JSON)")
-    return payload
+def _normalize_payload(obj: Any) -> Dict[str, Any]:
+    if obj is None:
+        return {}
+    if isinstance(obj, dict):
+        return obj
+    if hasattr(obj, "model_dump"):
+        data = obj.model_dump()  # type: ignore[call-arg]
+        if isinstance(data, dict):
+            return data
+    if hasattr(obj, "dict"):
+        data = obj.dict()  # type: ignore[call-arg]
+        if isinstance(data, dict):
+            return data
+    raise MCPClientError("Respuesta inválida del MCP (se esperaba objeto JSON)")
+
+
+def _ensure_sdk_available() -> None:
+    if ClientSession is None or websocket_client is None:
+        raise MCPClientError(
+            "El SDK cliente de MCP no está instalado. Ejecuta "
+            f"{_SDK_INSTALL_HINT}" 
+        )
 
 
 class MCPClient:
@@ -98,42 +121,63 @@ class MCPClient:
         self._timeout = max(1, provider.timeout_seconds)
         self._max_retries = max(0, provider.max_retries)
         self._request_id = request_id or str(uuid.uuid4())
-        # SSL context (CA del sistema o CA personalizada si MCP_CA_BUNDLE está definida)
         self._ssl_context = _build_ssl_context()
 
     async def list_tools(self) -> List[MCPToolInfo]:
-        response = await self._send_with_retry({"type": "list_tools", "request_id": self._request_id})
-        tools_raw = response.get("tools", [])
-        if not isinstance(tools_raw, list):
-            raise MCPClientError("Respuesta inválida de list_tools (se esperaba lista)")
-        tools: List[MCPToolInfo] = []
-        for item in tools_raw:
-            if isinstance(item, dict):
-                tool = MCPToolInfo.from_raw(item)
-                if tool:
-                    tools.append(tool)
-        return tools
+        async def _operation(session: ClientSession) -> List[MCPToolInfo]:
+            response = await session.list_tools()  # type: ignore[attr-defined]
+            payload = _normalize_payload(response)
+            tools_raw: Any = payload.get("tools")
+            if tools_raw is None and hasattr(response, "tools"):
+                tools_raw = []
+                for item in getattr(response, "tools"):
+                    if hasattr(item, "model_dump"):
+                        tools_raw.append(item.model_dump())  # type: ignore[call-arg]
+                    elif hasattr(item, "dict"):
+                        tools_raw.append(item.dict())  # type: ignore[call-arg]
+                    else:
+                        tools_raw.append(item)
+            if not isinstance(tools_raw, list):
+                raise MCPClientError("Respuesta inválida de list_tools (se esperaba lista)")
+            tools: List[MCPToolInfo] = []
+            for item in tools_raw:
+                if isinstance(item, dict):
+                    tool = MCPToolInfo.from_raw(item)
+                    if tool:
+                        tools.append(tool)
+            return tools
+
+        return await self._run_with_retry(_operation)
 
     async def call_tool(self, tool_name: str, arguments: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        payload = {
-            "type": "call_tool",
-            "tool": tool_name,
-            "tool_name": tool_name,
-            "params": arguments or {},
-            "arguments": arguments or {},
-            "request_id": self._request_id,
-        }
-        return await self._send_with_retry(payload)
+        async def _operation(session: ClientSession) -> Dict[str, Any]:
+            args: Dict[str, Any] = dict(arguments or {})
+            token = self._provider.resolve_token()
+            if token:
+                args.setdefault("token", token)
+                args.setdefault("token_internal", token)
+            result = await session.call_tool(tool_name, arguments=args)  # type: ignore[attr-defined]
+            payload = _normalize_payload(result)
+            payload.setdefault("retries", 0)
+            return payload
+
+        return await self._run_with_retry(_operation)
 
     async def health_ping(self) -> Dict[str, Any]:
         return await self.call_tool("health.ping", {})
 
-    async def _send_with_retry(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def _run_with_retry(self, operation: Callable[[ClientSession], Awaitable[_ReturnType]]) -> _ReturnType:
+        _ensure_sdk_available()
         last_exc: Optional[BaseException] = None
         for attempt in range(self._max_retries + 1):
             try:
-                return await self._send_once(payload)
-            except (asyncio.TimeoutError, aiohttp.ClientError, MCPClientError, json.JSONDecodeError, OSError) as exc:
+                return await self._run_once(operation)
+            except (
+                asyncio.TimeoutError,
+                MCPClientError,
+                OSError,
+                RuntimeError,
+            ) as exc:
                 last_exc = exc
                 if attempt >= self._max_retries:
                     break
@@ -148,22 +192,12 @@ class MCPClient:
                 await asyncio.sleep(backoff)
         raise MCPClientError(f"Fallo de MCP WSS en {self._provider.name}") from last_exc
 
-    async def _send_once(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        headers = {
-            "Authorization": f"Bearer {self._provider.resolve_token()}",
-            "User-Agent": _DEFAULT_USER_AGENT,
-            "X-Request-ID": self._request_id,
-        }
-        timeout = aiohttp.ClientTimeout(total=self._timeout)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.ws_connect(self._provider.endpoint, headers=headers, ssl=self._ssl_context, autoping=True) as ws:
-                await ws.send_str(json.dumps(payload))
-                msg = await ws.receive(timeout=self._timeout)
-                if msg.type == aiohttp.WSMsgType.TEXT:
-                    raw = msg.data
-                elif msg.type == aiohttp.WSMsgType.BINARY:
-                    raw = msg.data.decode("utf-8", errors="replace")
-                else:
-                    raise MCPClientError(f"Respuesta WS inesperada: {msg.type}")
-        data = json.loads(raw)
-        return _ensure_dict(data)
+    async def _run_once(self, operation: Callable[[ClientSession], Awaitable[_ReturnType]]) -> _ReturnType:
+        connect_kwargs: Dict[str, Any] = {}
+        if self._ssl_context is not None:
+            connect_kwargs["ssl"] = self._ssl_context
+
+        async with websocket_client(self._provider.endpoint, **connect_kwargs) as (read, write):  # type: ignore[arg-type]
+            async with ClientSession(read, write) as session:  # type: ignore[call-arg]
+                await asyncio.wait_for(session.initialize(), timeout=self._timeout)
+                return await asyncio.wait_for(operation(session), timeout=self._timeout)

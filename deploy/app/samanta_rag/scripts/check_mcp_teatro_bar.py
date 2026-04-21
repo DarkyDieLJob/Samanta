@@ -1,29 +1,24 @@
 #!/usr/bin/env python3
-import os
-import sys
-import ssl
-import json
-import asyncio
 import argparse
-from typing import Dict, Any
+import asyncio
+import json
+import os
+import ssl
+import sys
+import uuid
+from dataclasses import dataclass
+from typing import Any, Dict
 
 import aiohttp
 
-try:
+try:  # pragma: no cover - opcional según entorno
     import websockets  # type: ignore
 except Exception:  # pragma: no cover
     websockets = None  # type: ignore
 
 
-def build_payload(tool: str, args: Dict[str, Any]) -> Dict[str, Any]:
-    return {
-        "type": "call_tool",
-        "tool": tool,
-        "tool_name": tool,
-        "params": args,
-        "arguments": args,
-        "request_id": os.getenv("REQUEST_ID", "check-mcp")
-    }
+JSONRPC_VERSION = "2.0"
+USER_AGENT = "Samanta-RAG/diag/0.3.0"
 
 
 def build_ssl_context() -> ssl.SSLContext:
@@ -33,56 +28,100 @@ def build_ssl_context() -> ssl.SSLContext:
     return ctx
 
 
-async def check_aiohttp(endpoint: str, token: str, timeout: float, tool: str, tool_args: Dict[str, Any]) -> Dict[str, Any]:
-    payload = build_payload(tool, tool_args)
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "User-Agent": "Samanta-RAG/diag/0.2.0",
-    }
-    ssl_ctx = build_ssl_context()
-    client_timeout = aiohttp.ClientTimeout(total=timeout)
-    async with aiohttp.ClientSession(timeout=client_timeout) as session:
-        async with session.ws_connect(endpoint, headers=headers, ssl=ssl_ctx, autoping=True) as ws:
-            await ws.send_str(json.dumps(payload))
-            msg = await ws.receive(timeout=timeout)
-            if msg.type == aiohttp.WSMsgType.TEXT:
-                raw = msg.data
-            elif msg.type == aiohttp.WSMsgType.BINARY:
-                raw = msg.data.decode("utf-8", errors="replace")
-            else:
-                raise RuntimeError(f"Unexpected WS message type: {msg.type}")
-    return json.loads(raw)
+def _jsonrpc(message_id: str, method: str, params: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {"jsonrpc": JSONRPC_VERSION, "id": message_id, "method": method}
+    if params is not None:
+        payload["params"] = params
+    return payload
 
 
-async def check_websockets(endpoint: str, token: str, timeout: float, tool: str, tool_args: Dict[str, Any]) -> Dict[str, Any]:
-    if websockets is None:
-        raise RuntimeError("websockets no instalado")
+@dataclass(slots=True)
+class MCPDiagClient:
+    endpoint: str
+    token: str
+    timeout: float
 
-    payload = build_payload(tool, tool_args)
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "User-Agent": "Samanta-RAG/diag/0.2.0",
-    }
-    ssl_ctx = build_ssl_context()
+    def _headers(self) -> Dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self.token}",
+            "User-Agent": USER_AGENT,
+        }
 
-    header_list = [(k, v) for k, v in headers.items()]
-    try:
+    async def call_via_aiohttp(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        ssl_ctx = None if self.endpoint.startswith("ws://") else build_ssl_context()
+        timeout = aiohttp.ClientTimeout(total=self.timeout)
+        subprotocols = ("mcp.events.v1", "mcp")
+
+        async with aiohttp.ClientSession(timeout=timeout, headers=self._headers()) as session:
+            async with session.ws_connect(
+                self.endpoint,
+                ssl=ssl_ctx,
+                autoping=True,
+                protocols=subprotocols,
+            ) as ws:
+                await ws.send_str(json.dumps(payload))
+                response = await ws.receive(timeout=self.timeout)
+                if response.type == aiohttp.WSMsgType.TEXT:
+                    raw = response.data
+                elif response.type == aiohttp.WSMsgType.BINARY:
+                    raw = response.data.decode("utf-8", errors="replace")
+                else:
+                    raise RuntimeError(f"Unexpected WS message type: {response.type}")
+        return json.loads(raw)
+
+    async def call_via_websockets(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        if websockets is None:
+            raise RuntimeError("websockets no instalado")
+
+        ssl_ctx = None if self.endpoint.startswith("ws://") else build_ssl_context()
+        header_list = list(self._headers().items())
+        subprotocols = ("mcp.events.v1", "mcp")
+
         connect_coro = websockets.connect(
-            endpoint,
-            additional_headers=header_list,
-            ssl=ssl_ctx,
-        )
-    except TypeError:
-        connect_coro = websockets.connect(
-            endpoint,
+            self.endpoint,
             extra_headers=header_list,
             ssl=ssl_ctx,
+            subprotocols=list(subprotocols),
         )
 
-    async with await asyncio.wait_for(connect_coro, timeout=timeout) as ws:
-        await asyncio.wait_for(ws.send(json.dumps(payload)), timeout=timeout)
-        raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
-    return json.loads(raw)
+        ws = await asyncio.wait_for(connect_coro, timeout=self.timeout)
+        try:
+            await asyncio.wait_for(ws.send(json.dumps(payload)), timeout=self.timeout)
+            raw = await asyncio.wait_for(ws.recv(), timeout=self.timeout)
+        finally:
+            try:
+                await asyncio.wait_for(ws.close(), timeout=self.timeout)
+            except Exception:
+                pass
+        return json.loads(raw)
+
+
+async def run_diagnostic(client: MCPDiagClient, tool: str, tool_args: Dict[str, Any], method: str) -> Dict[str, Any]:
+    init_id = str(uuid.uuid4())
+    call_id = str(uuid.uuid4())
+    payloads = [
+        _jsonrpc(init_id, "initialize", {"protocol_versions": ["mcp/1.0"]}),
+        _jsonrpc(
+            call_id,
+            "call_tool",
+            {
+                "name": tool,
+                "arguments": {
+                    **tool_args,
+                    "token": client.token,
+                    "token_internal": client.token,
+                },
+            },
+        ),
+    ]
+
+    responses: list[Dict[str, Any]] = []
+    for body in payloads:
+        if method == "aiohttp":
+            responses.append(await client.call_via_aiohttp(body))
+        else:
+            responses.append(await client.call_via_websockets(body))
+    return {"responses": responses}
 
 
 async def main() -> int:
@@ -104,44 +143,24 @@ async def main() -> int:
 
     endpoint = os.getenv("MCP_TEATRO_BAR_ENDPOINT", "").strip()
     token = os.getenv("MCP_TOKEN_TEATRO_BAR", "").strip()
-    if not endpoint or not endpoint.startswith("wss://"):
-        print("ERROR: MCP_TEATRO_BAR_ENDPOINT vacío o inválido (se espera wss://...)", file=sys.stderr)
+    if not endpoint or not (endpoint.startswith("wss://") or endpoint.startswith("ws://")):
+        print("ERROR: MCP_TEATRO_BAR_ENDPOINT vacío o inválido (se espera wss://... o ws:// para debug)", file=sys.stderr)
         return 2
     if not token:
         print("ERROR: MCP_TOKEN_TEATRO_BAR vacío", file=sys.stderr)
         return 2
 
-    methods = []
-    if args.method == "aiohttp":
-        methods = ["aiohttp"]
-    elif args.method == "websockets":
-        methods = ["websockets"]
-    else:
-        methods = ["aiohttp", "websockets"]
+    methods = [args.method] if args.method in {"aiohttp", "websockets"} else ["aiohttp", "websockets"]
+    client = MCPDiagClient(endpoint=endpoint, token=token, timeout=args.timeout)
 
     ok_any = False
     for m in methods:
         try:
-            if m == "aiohttp":
-                resp = await check_aiohttp(endpoint, token, args.timeout, args.tool, tool_args)
-            else:
-                resp = await check_websockets(endpoint, token, args.timeout, args.tool, tool_args)
-            status = resp.get("status") or resp.get("ok")
-            out = {
-                "method": m,
-                "endpoint": endpoint,
-                "ok": bool(status == "ok" or status is True),
-                "raw": resp
-            }
-            print(json.dumps(out, ensure_ascii=False, indent=2 if args.pretty else None))
+            report = await run_diagnostic(client, args.tool, tool_args, m)
+            print(json.dumps({"method": m, "endpoint": endpoint, "ok": True, "raw": report}, ensure_ascii=False, indent=2 if args.pretty else None))
             ok_any = True
         except Exception as e:
-            print(json.dumps({
-                "method": m,
-                "endpoint": endpoint,
-                "ok": False,
-                "error": str(e)
-            }, ensure_ascii=False, indent=2 if args.pretty else None))
+            print(json.dumps({"method": m, "endpoint": endpoint, "ok": False, "error": str(e)}, ensure_ascii=False, indent=2 if args.pretty else None))
     return 0 if ok_any else 1
 
 
