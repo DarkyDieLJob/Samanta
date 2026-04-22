@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from typing import Optional
+from typing import List, Optional
 
 from ..domain.entities import QueryResult, VectorStoreSummary
 from ..domain.services import QueryService
@@ -23,21 +23,45 @@ class QueryHandler:
         question = question.strip()
         if not question:
             raise RuntimeError("Pregunta vacía")
+
+        rag_context: Optional[str] = None
+        rag_sources: List[str] = []
+        rag_error: Optional[str] = None
+        top_k = self.fallback_top_k if self.fallback_top_k > 0 else None
+
+        try:
+            rag_context, rag_sources = self.query_service.build_context(question, top_k=top_k)
+        except RuntimeError as exc:
+            rag_error = str(exc)
+
         attempt: Optional[MCPRouterAttempt] = None
+        mcp_result: Optional[QueryResult] = None
         if self.mcp_router:
             attempt = self.mcp_router.try_answer(question)
             if attempt and attempt.status == "success" and attempt.result:
-                return attempt.result
-        degrade_message = attempt.message if attempt and attempt.message else None
-        top_k = self.fallback_top_k if self.fallback_top_k > 0 else None
-        result = self.query_service.run(question, top_k=top_k)
-        if degrade_message:
-            answer = f"{degrade_message}. Utilizando base estática.\n\n{result.answer}"
-            sources = list(result.sources)
-            if "FAISS estático" not in sources:
-                sources.append("FAISS estático")
+                mcp_result = attempt.result
+
+        if mcp_result and rag_context:
+            combined_context = (
+                f"Datos en vivo:\n{mcp_result.answer}\n\n"
+                f"Contexto base:\n{rag_context}"
+            )
+            answer = self.query_service.generate_with_context(question, combined_context)
+            sources = list(dict.fromkeys(mcp_result.sources + rag_sources))
             return QueryResult(answer=answer, sources=sources)
-        return result
+
+        if mcp_result:
+            return mcp_result
+
+        if rag_context:
+            answer = self.query_service.generate_with_context(question, rag_context)
+            return QueryResult(answer=answer, sources=rag_sources)
+
+        degrade_message = attempt.message if attempt and attempt.message else rag_error
+        if degrade_message:
+            raise RuntimeError(degrade_message)
+
+        raise RuntimeError("No se pudo generar respuesta")
 
     def summary(self) -> VectorStoreSummary:
         return self.query_service.summary()

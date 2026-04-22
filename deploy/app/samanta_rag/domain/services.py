@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from .entities import (
     ChatModelPort,
@@ -39,6 +39,11 @@ class QueryService:
         self._top_k = top_k
 
     def run(self, question: str, *, top_k: Optional[int] = None) -> QueryResult:
+        context, sources = self.build_context(question, top_k=top_k)
+        answer = self._chat_model.generate(question, context)
+        return QueryResult(answer=answer, sources=sources)
+
+    def build_context(self, question: str, *, top_k: Optional[int] = None) -> Tuple[str, List[str]]:
         if not self._vectorstore.is_available():
             raise RuntimeError("Vectorstore no disponible")
         effective_k = self._top_k
@@ -48,9 +53,11 @@ class QueryService:
         if not documents:
             raise RuntimeError("No se encontraron documentos relevantes")
         context = format_context(documents)
-        answer = self._chat_model.generate(question, context)
         sources = extract_sources(documents)
-        return QueryResult(answer=answer, sources=sources)
+        return context, sources
+
+    def generate_with_context(self, question: str, context: str) -> str:
+        return self._chat_model.generate(question, context)
 
     def summary(self) -> VectorStoreSummary:
         return self._vectorstore.summary()
