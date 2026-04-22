@@ -27,6 +27,11 @@ except Exception:  # pragma: no cover - mostramos mensaje amigable más adelante
     ClientSession = None  # type: ignore
     websocket_client = None  # type: ignore
 
+try:  # pragma: no cover - dependencia externa opcional durante tests
+    from websockets.exceptions import InvalidURI  # type: ignore
+except Exception:  # pragma: no cover - fallback si websockets no está disponible
+    InvalidURI = None  # type: ignore
+
 
 LOGGER = logging.getLogger(__name__)
 _SDK_INSTALL_HINT = "pip install 'mcp>=1.2.0'"
@@ -218,7 +223,45 @@ class MCPClient:
         if self._ssl_context is not None:
             connect_kwargs["ssl"] = self._ssl_context
 
-        async with websocket_client(self._endpoint, **connect_kwargs) as (read, write):  # type: ignore[arg-type]
-            async with ClientSession(read, write) as session:  # type: ignore[call-arg]
-                await asyncio.wait_for(session.initialize(), timeout=self._timeout)
-                return await asyncio.wait_for(operation(session), timeout=self._timeout)
+        attempted: set[str] = set()
+        endpoint = self._endpoint
+
+        while True:
+            if endpoint in attempted:
+                raise MCPClientError(
+                    f"Redirecciones en bucle al conectar con MCP {self._provider.name}: {endpoint}"
+                )
+            attempted.add(endpoint)
+
+            try:
+                async with websocket_client(endpoint, **connect_kwargs) as (read, write):  # type: ignore[arg-type]
+                    async with ClientSession(read, write) as session:  # type: ignore[call-arg]
+                        await asyncio.wait_for(session.initialize(), timeout=self._timeout)
+                        return await asyncio.wait_for(operation(session), timeout=self._timeout)
+            except Exception as exc:
+                if InvalidURI is None or not isinstance(exc, InvalidURI):
+                    raise
+
+                redirect_uri = getattr(exc, "uri", None)
+                if not redirect_uri and exc.args:
+                    candidate = str(exc.args[0])
+                    redirect_uri = candidate.split(" isn't a valid URI", 1)[0]
+                if not redirect_uri:
+                    raise
+
+                try:
+                    new_endpoint = _normalize_endpoint(str(redirect_uri))
+                except MCPClientError:
+                    raise
+
+                if new_endpoint == endpoint:
+                    raise
+
+                LOGGER.warning(
+                    "Proveedor MCP %s redirigió a %s; reintentando con %s",
+                    self._provider.name,
+                    redirect_uri,
+                    new_endpoint,
+                )
+                self._endpoint = new_endpoint
+                endpoint = new_endpoint
