@@ -89,6 +89,26 @@ def _build_ssl_context() -> Optional[ssl.SSLContext]:
     return context
 
 
+def _normalize_endpoint(endpoint: str) -> str:
+    cleaned = endpoint.strip()
+    if not cleaned:
+        raise MCPClientError("Endpoint MCP vacío")
+    lower = cleaned.lower()
+    if lower.startswith("ws://") or lower.startswith("wss://"):
+        return cleaned
+    if lower.startswith("https://"):
+        converted = "wss://" + cleaned[8:]
+        LOGGER.debug("Normalizando endpoint MCP HTTPS a WSS: %s -> %s", cleaned, converted)
+        return converted
+    if lower.startswith("http://"):
+        converted = "ws://" + cleaned[7:]
+        LOGGER.debug("Normalizando endpoint MCP HTTP a WS: %s -> %s", cleaned, converted)
+        return converted
+    raise MCPClientError(
+        "Endpoint MCP debe usar esquema ws:// o wss:// (o http/https convertibles)."
+    )
+
+
 def _normalize_payload(obj: Any) -> Dict[str, Any]:
     if obj is None:
         return {}
@@ -122,6 +142,7 @@ class MCPClient:
         self._max_retries = max(0, provider.max_retries)
         self._request_id = request_id or str(uuid.uuid4())
         self._ssl_context = _build_ssl_context()
+        self._endpoint = _normalize_endpoint(provider.endpoint)
 
     async def list_tools(self) -> List[MCPToolInfo]:
         async def _operation(session: ClientSession) -> List[MCPToolInfo]:
@@ -197,7 +218,7 @@ class MCPClient:
         if self._ssl_context is not None:
             connect_kwargs["ssl"] = self._ssl_context
 
-        async with websocket_client(self._provider.endpoint, **connect_kwargs) as (read, write):  # type: ignore[arg-type]
+        async with websocket_client(self._endpoint, **connect_kwargs) as (read, write):  # type: ignore[arg-type]
             async with ClientSession(read, write) as session:  # type: ignore[call-arg]
                 await asyncio.wait_for(session.initialize(), timeout=self._timeout)
                 return await asyncio.wait_for(operation(session), timeout=self._timeout)
