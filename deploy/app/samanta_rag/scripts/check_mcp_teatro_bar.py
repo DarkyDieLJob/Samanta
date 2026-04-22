@@ -18,6 +18,7 @@ except Exception:  # pragma: no cover
 
 
 JSONRPC_VERSION = "2.0"
+PROTOCOL_VERSION = "1.0"
 USER_AGENT = "Samanta-RAG/diag/0.3.0"
 
 
@@ -47,7 +48,7 @@ class MCPDiagClient:
             "User-Agent": USER_AGENT,
         }
 
-    async def call_via_aiohttp(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def call_via_aiohttp(self, payloads: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
         ssl_ctx = None if self.endpoint.startswith("ws://") else build_ssl_context()
         timeout = aiohttp.ClientTimeout(total=self.timeout)
         subprotocols = ("mcp.events.v1", "mcp")
@@ -59,17 +60,20 @@ class MCPDiagClient:
                 autoping=True,
                 protocols=subprotocols,
             ) as ws:
-                await ws.send_str(json.dumps(payload))
-                response = await ws.receive(timeout=self.timeout)
-                if response.type == aiohttp.WSMsgType.TEXT:
-                    raw = response.data
-                elif response.type == aiohttp.WSMsgType.BINARY:
-                    raw = response.data.decode("utf-8", errors="replace")
-                else:
-                    raise RuntimeError(f"Unexpected WS message type: {response.type}")
-        return json.loads(raw)
+                responses: list[Dict[str, Any]] = []
+                for payload in payloads:
+                    await ws.send_str(json.dumps(payload))
+                    message = await ws.receive(timeout=self.timeout)
+                    if message.type == aiohttp.WSMsgType.TEXT:
+                        raw = message.data
+                    elif message.type == aiohttp.WSMsgType.BINARY:
+                        raw = message.data.decode("utf-8", errors="replace")
+                    else:
+                        raise RuntimeError(f"Unexpected WS message type: {message.type}")
+                    responses.append(json.loads(raw))
+        return responses
 
-    async def call_via_websockets(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def call_via_websockets(self, payloads: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
         if websockets is None:
             raise RuntimeError("websockets no instalado")
 
@@ -86,24 +90,45 @@ class MCPDiagClient:
 
         ws = await asyncio.wait_for(connect_coro, timeout=self.timeout)
         try:
-            await asyncio.wait_for(ws.send(json.dumps(payload)), timeout=self.timeout)
-            raw = await asyncio.wait_for(ws.recv(), timeout=self.timeout)
+            responses: list[Dict[str, Any]] = []
+            for payload in payloads:
+                await asyncio.wait_for(ws.send(json.dumps(payload)), timeout=self.timeout)
+                raw = await asyncio.wait_for(ws.recv(), timeout=self.timeout)
+                if isinstance(raw, bytes):
+                    decoded = raw.decode("utf-8", errors="replace")
+                else:
+                    decoded = raw
+                responses.append(json.loads(decoded))
         finally:
             try:
                 await asyncio.wait_for(ws.close(), timeout=self.timeout)
             except Exception:
                 pass
-        return json.loads(raw)
+        return responses
 
 
 async def run_diagnostic(client: MCPDiagClient, tool: str, tool_args: Dict[str, Any], method: str) -> Dict[str, Any]:
     init_id = str(uuid.uuid4())
     call_id = str(uuid.uuid4())
     payloads = [
-        _jsonrpc(init_id, "initialize", {"protocol_versions": ["mcp/1.0"]}),
+        _jsonrpc(
+            init_id,
+            "initialize",
+            {
+                "protocolVersion": PROTOCOL_VERSION,
+                "capabilities": {
+                    "tools": {"list": {}, "call": {}},
+                    "logging": {"setLevel": {}},
+                },
+                "clientInfo": {
+                    "name": "samanta-rag-diag",
+                    "version": USER_AGENT,
+                },
+            },
+        ),
         _jsonrpc(
             call_id,
-            "call_tool",
+            "tools/call",
             {
                 "name": tool,
                 "arguments": {
@@ -115,12 +140,10 @@ async def run_diagnostic(client: MCPDiagClient, tool: str, tool_args: Dict[str, 
         ),
     ]
 
-    responses: list[Dict[str, Any]] = []
-    for body in payloads:
-        if method == "aiohttp":
-            responses.append(await client.call_via_aiohttp(body))
-        else:
-            responses.append(await client.call_via_websockets(body))
+    if method == "aiohttp":
+        responses = await client.call_via_aiohttp(payloads)
+    else:
+        responses = await client.call_via_websockets(payloads)
     return {"responses": responses}
 
 

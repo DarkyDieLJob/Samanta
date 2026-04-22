@@ -4,13 +4,43 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Tuple, TypeVar
 
 from .client import MCPClient, MCPClientError, MCPProvider
 from .registry import ProviderConfig, RegistryConfig
 
 LOGGER = logging.getLogger(__name__)
+_T = TypeVar("_T")
+
+
+def _run_coro_blocking(factory: Callable[[], Awaitable[_T]]) -> _T:
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(factory())
+
+    result: Dict[str, _T] = {}
+    error: Dict[str, BaseException] = {}
+
+    def _runner() -> None:
+        new_loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(new_loop)
+            result["value"] = new_loop.run_until_complete(factory())
+        except BaseException as exc:  # noqa: BLE001
+            error["error"] = exc
+        finally:
+            new_loop.close()
+
+    thread = threading.Thread(target=_runner, daemon=True)
+    thread.start()
+    thread.join()
+
+    if error:
+        raise error["error"]
+    return result["value"]
 
 
 @dataclass(frozen=True)
@@ -111,7 +141,7 @@ def build_tool_registry(config: RegistryConfig) -> MCPToolRegistry:
     tools: List[RegisteredTool] = []
     for provider_cfg in config.providers:
         try:
-            provider_tools = asyncio.run(_discover_provider(provider_cfg))
+            provider_tools = _run_coro_blocking(lambda cfg=provider_cfg: _discover_provider(cfg))
         except MCPClientError as exc:
             LOGGER.error("Fallo descubriendo tools de %s: %s", provider_cfg.name, exc)
             continue

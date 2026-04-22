@@ -46,9 +46,18 @@ class RegistryConfig:
     defaults: Defaults
 
 
+def _allow_insecure_ws() -> bool:
+    value = os.getenv("ALLOW_INSECURE_MCP", "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
 def _ensure_wss(endpoint: str) -> None:
-    if not endpoint.lower().startswith("wss://"):
-        raise MCPRegistryError("El endpoint de MCP debe usar WSS (wss://)")
+    normalized = endpoint.strip().lower()
+    if normalized.startswith("wss://"):
+        return
+    if normalized.startswith("ws://") and _allow_insecure_ws():
+        return
+    raise MCPRegistryError("El endpoint de MCP debe usar WSS (wss://) o habilitar ALLOW_INSECURE_MCP=true para desarrollo")
 
 
 def _require_env_var(var_name: str) -> None:
