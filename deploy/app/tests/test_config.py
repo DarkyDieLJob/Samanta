@@ -56,6 +56,7 @@ def test_load_tenants_from_json_files() -> None:
             },
         )
         try:
+            os.environ.pop("DEFAULT_TENANT", None)
             tenants, default_id = load_tenants(settings)
             assert sorted(tenants.keys()) == ["portfolio", "teatro"]
             assert default_id == "portfolio"  # fallback al primero por orden alfabético

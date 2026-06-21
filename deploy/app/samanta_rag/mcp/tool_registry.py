@@ -142,7 +142,7 @@ def build_tool_registry(config: RegistryConfig) -> MCPToolRegistry:
     for provider_cfg in config.providers:
         try:
             provider_tools = _run_coro_blocking(lambda cfg=provider_cfg: _discover_provider(cfg))
-        except MCPClientError as exc:
+        except Exception as exc:
             LOGGER.error("Fallo descubriendo tools de %s: %s", provider_cfg.name, exc)
             continue
         tools.extend(provider_tools)
