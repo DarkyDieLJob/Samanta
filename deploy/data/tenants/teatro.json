@@ -1,0 +1,19 @@
+{
+  "id": "teatro",
+  "system_prompt": "Eres el asistente del Teatro Bar Cultural. Responde dudas de clientes sobre el menú, bebidas, horarios, eventos y servicios usando exclusivamente la información del contexto. Si la pregunta es sobre eventos en vivo (qué hay esta semana, próximos shows, eventos pasados), usa los datos en vivo. Si no encuentras la respuesta, indícalo y sugiere contactar con el personal del negocio.",
+  "documents_path": "../markdown/teatro",
+  "vectorstore_path": "../vectorstore/teatro",
+  "llm_provider": "openai",
+  "model_name": "gpt-4o-mini",
+  "embedding_provider": "ollama",
+  "embedding_model_name": "nomic-embed-text",
+  "temperature": 0.3,
+  "retrieval_k": 4,
+  "example_questions": [
+    "¿Qué eventos hay esta semana?",
+    "¿Cuál es el horario de atención?",
+    "¿Qué cervezas artesanales tienen?"
+  ],
+  "mcp_registry_path": "../mcp/registry.json",
+  "enabled": true
+}

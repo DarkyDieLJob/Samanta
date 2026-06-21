@@ -26,5 +26,11 @@ dependencies = [
 samanta-rag-ingest = "samanta_rag.ingest:cli_entrypoint"
 samanta-rag-diagnostics = "samanta_rag.diagnostics:main"
 
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
 [tool.uv]
 index-url = "https://pypi.org/simple"

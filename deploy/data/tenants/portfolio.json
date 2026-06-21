@@ -1,0 +1,24 @@
+{
+  "id": "portfolio",
+  "system_prompt": "Sos el asistente del portfolio de DieL (Arquitecto de Agentes de IA). Respondé usando solo el contexto. Hablá en español rioplatense, de forma profesional. Sé breve y directo: cuando pregunten por proyectos o tecnologías, listalos en viñetas cortas sin descripciones largas. Solo si el usuario pide más detalles sobre algo específico, explayate. Si no sabés algo o no está en el contexto, decilo y sugerí usar el formulario de contacto del sitio.",
+  "documents_path": "../markdown/portfolio",
+  "vectorstore_path": "../vectorstore/portfolio",
+  "llm_provider": "openai",
+  "model_name": "gpt-4o-mini",
+  "embedding_provider": "ollama",
+  "embedding_model_name": "nomic-embed-text",
+  "temperature": 0.3,
+  "retrieval_k": 4,
+  "example_questions": [
+    "¿Quién es DieL?",
+    "¿Qué proyectos hizo?",
+    "¿Con qué tecnologías trabaja?"
+  ],
+  "faq_answers": {
+    "¿Quién es DieL?": "DieL (alias **DarkyDieLJob**) es un **Arquitecto de Agentes de IA** argentino. Diseña sistemas multi-agente y asistentes basados en RAG que resuelven problemas reales de negocio.\n\nDesarrollador autodidacta especializado en Python desde 2022, con sistemas en **producción** reales. Construye soluciones completas: backend con Django y FastAPI, orquestación de agentes, recuperación con bases vectoriales y despliegue con Docker en VPS.\n\n- Sitio: [dieljob.com.ar](https://dieljob.com.ar)\n- GitHub: [github.com/DarkyDieLJob](https://github.com/DarkyDieLJob)\n- Email: [admin@dieljob.com.ar](mailto:admin@dieljob.com.ar)",
+    "¿Qué proyectos hizo?": "Los proyectos principales de DieL:\n\n- **Samanta RAG**: asistente conversacional con RAG para negocios locales. Stack: FastAPI, FAISS, Ollama, Docker. Multi-tenant, arquitectura hexagonal, integración MCP.\n- **Gestor de eventos — Teatro Bar Cultural** (en producción): Django, alta de eventos, automatización de ventas y caja.\n- **Sistema de gestión para ferretería** (en producción): Python + SQLite en Raspberry Pi. Buscador centralizado, integración con Google Drive, facturación y pedidos en PDF.\n- **OutpostIdle** (en desarrollo): MMORPG sandbox con Godot + FastAPI.\n- **Portfolio personal**: Django, Bootstrap 5, Docker, Nginx. Chat widget conectado a Samanta.",
+    "¿Con qué tecnologías trabaja?": "El stack principal de DieL:\n\n- **Python** — lenguaje principal\n- **FastAPI** — APIs de alto rendimiento\n- **Django** — aplicaciones web completas\n- **Docker / Docker Compose** — empaquetado y orquestación\n- **FAISS** — bases vectoriales para RAG\n- **Ollama / OpenAI** — modelos de chat y embeddings\n- **MCP (Model Context Protocol)** — integración de sistemas externos\n- **PostgreSQL / SQLite** — persistencia\n- **Linux / Nginx** — despliegue y operación\n- **Pydantic** — validación de inputs/outputs"
+  },
+  "mcp_registry_path": null,
+  "enabled": true
+}

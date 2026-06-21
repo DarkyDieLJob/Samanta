@@ -27,7 +27,7 @@ def create_api_app(container: AppContainer) -> FastAPI:
         allow_headers=["*"],
     )
 
-    configure_dependencies(container.query_handler, container.settings)
+    configure_dependencies(container.handlers, container.default_tenant, container.settings)
 
     if container.settings.allowed_ips:
         app.add_middleware(IPAllowlistMiddleware, allowed_ips=container.settings.allowed_ips)

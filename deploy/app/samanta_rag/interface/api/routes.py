@@ -8,24 +8,41 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ...application.query_handler import QueryHandler
-from .dependencies import get_query_handler, get_settings
+from .dependencies import (
+    get_default_tenant,
+    get_query_handler,
+    get_settings,
+    list_tenants,
+)
 from ...mcp.registry import load_registry_from_env
 from ...mcp.client import MCPClient, MCPClientError, MCPProvider
 
 router = APIRouter()
 
 
+def _resolve_handler(tenant: Optional[str] = None) -> QueryHandler:
+    """Dependencia que resuelve el handler por tenant (?tenant=) o 404."""
+    try:
+        return get_query_handler(tenant)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Tenant desconocido")
+
+
 class QueryPayload(BaseModel):
     question: str
+    tenant: Optional[str] = None
+    only_cached: bool = False
 
 
 class QueryResponseSchema(BaseModel):
     answer: str
     sources: list[str]
+    cached: bool = False
+    served: bool = True
 
 
 @router.get("/health", response_model=Dict[str, object])
-async def health(handler: QueryHandler = Depends(get_query_handler)) -> Dict[str, object]:
+async def health(handler: QueryHandler = Depends(_resolve_handler)) -> Dict[str, object]:
     summary = handler.summary().to_dict()
     status = "ok" if handler.is_available() else "missing_index"
     registry = handler.mcp_registry_summary()
@@ -39,19 +56,25 @@ async def health(handler: QueryHandler = Depends(get_query_handler)) -> Dict[str
 
 
 @router.post("/api/reload", response_model=Dict[str, str])
-async def reload(handler: QueryHandler = Depends(get_query_handler)) -> Dict[str, str]:
+async def reload(handler: QueryHandler = Depends(_resolve_handler)) -> Dict[str, str]:
     handler.refresh_vectorstore()
     status = "ok" if handler.is_available() else "missing_index"
     return {"status": status}
 
 
 @router.get("/api/status", response_model=Dict[str, object])
-async def status(handler: QueryHandler = Depends(get_query_handler)) -> Dict[str, object]:
+async def status(handler: QueryHandler = Depends(_resolve_handler)) -> Dict[str, object]:
     summary = handler.summary().to_dict()
     status = "ok" if handler.is_available() else "missing_index"
     settings = get_settings()
     allowed_ips = list(settings.allowed_ips) if settings.allowed_ips else ["*"]
-    return {"status": status, "summary": summary, "allowed_ips": allowed_ips}
+    return {
+        "status": status,
+        "summary": summary,
+        "allowed_ips": allowed_ips,
+        "tenants": list_tenants(),
+        "default_tenant": get_default_tenant(),
+    }
 
 
 @router.get("/api/mcp/teatro-bar/health", response_model=Dict[str, object])
@@ -96,11 +119,26 @@ async def mcp_teatro_bar_health() -> Dict[str, object]:
 
 
 @router.post("/api/query", response_model=QueryResponseSchema)
-async def query(payload: QueryPayload, handler: QueryHandler = Depends(get_query_handler)) -> QueryResponseSchema:
-    if not payload.question.strip():
+async def query(payload: QueryPayload) -> QueryResponseSchema:
+    question = payload.question.strip()
+    if not question:
         raise HTTPException(status_code=422, detail="Pregunta vacía")
+    handler = _resolve_handler(payload.tenant)
+
+    # Modo "solo caché": no se invoca el LLM. Si no hay respuesta cacheada,
+    # se indica served=False para que el llamador decida (p. ej. aplicar cupo).
+    if payload.only_cached:
+        cached = handler.try_cached(question)
+        if cached is None:
+            return QueryResponseSchema(answer="", sources=[], cached=False, served=False)
+        return QueryResponseSchema(
+            answer=cached.answer, sources=cached.sources, cached=True, served=True
+        )
+
     try:
-        result = handler.run(payload.question.strip())
+        result = handler.run(question)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
-    return QueryResponseSchema(answer=result.answer, sources=result.sources)
+    return QueryResponseSchema(
+        answer=result.answer, sources=result.sources, cached=result.cached, served=True
+    )

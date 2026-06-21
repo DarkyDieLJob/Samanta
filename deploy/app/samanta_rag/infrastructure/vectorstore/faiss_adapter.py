@@ -11,9 +11,8 @@ from typing import List, Optional
 
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
-from langchain_ollama import OllamaEmbeddings
-from langchain_openai import OpenAIEmbeddings
 
+from .embeddings import build_embeddings
 from ...constants import METADATA_FILENAME
 from ...domain.entities import RetrievedDocument, VectorStorePort, VectorStoreSummary
 
@@ -23,13 +22,23 @@ LOGGER = logging.getLogger(__name__)
 class FAISSVectorStoreAdapter(VectorStorePort):
     """Gestiona carga perezosa y consultas sobre un índice FAISS."""
 
-    def __init__(self, vectorstore_path: Path, *, embedding_model_name: str, base_url: str) -> None:
+    def __init__(
+        self,
+        vectorstore_path: Path,
+        *,
+        embedding_model_name: str,
+        base_url: str,
+        embedding_provider: str = "ollama",
+        openai_api_key: str = "",
+    ) -> None:
         self._vectorstore_path = vectorstore_path
         self._vectorstore: Optional[FAISS] = None
         self._signature: Optional[str] = None
         self._lock = Lock()
         self._embedding_model_name = embedding_model_name
         self._base_url = base_url
+        self._embedding_provider = embedding_provider
+        self._openai_api_key = openai_api_key
 
     # --- Utilidades internas -------------------------------------------------
 
@@ -50,12 +59,13 @@ class FAISSVectorStoreAdapter(VectorStorePort):
         if not self._vectorstore_path.exists():
             LOGGER.warning("El directorio de vectorstore %s no existe", self._vectorstore_path)
             return None
-        # Selección de embeddings según proveedor
-        from ...config import settings
-        if settings.llm_provider == "openai" and settings.openai_api_key:
-            embeddings = OpenAIEmbeddings(model=self._embedding_model_name, api_key=settings.openai_api_key)
-        else:
-            embeddings = OllamaEmbeddings(model=self._embedding_model_name, base_url=self._base_url)
+        # Selección de embeddings según proveedor (independiente del chat)
+        embeddings = build_embeddings(
+            provider=self._embedding_provider,
+            model_name=self._embedding_model_name,
+            ollama_base_url=self._base_url,
+            openai_api_key=self._openai_api_key,
+        )
         return FAISS.load_local(
             folder_path=str(self._vectorstore_path),
             embeddings=embeddings,

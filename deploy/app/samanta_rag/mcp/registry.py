@@ -167,13 +167,20 @@ def load_registry_from_env() -> Optional[RegistryConfig]:
 
     path = os.getenv("MCP_REGISTRY_PATH", "").strip()
     if path:
-        p = Path(path)
-        if not p.exists() or not p.is_file():
-            raise MCPRegistryError(f"MCP_REGISTRY_PATH no existe o no es un archivo: {p}")
-        try:
-            data = json.loads(p.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as e:
-            raise MCPRegistryError("El archivo MCP_REGISTRY_PATH no contiene JSON válido") from e
-        return _parse_registry(data)
+        return load_registry_from_path(Path(path))
 
     return None
+
+
+def load_registry_from_path(path: Path) -> RegistryConfig:
+    """Carga y valida un registro MCP desde un archivo JSON específico.
+
+    Usado por la configuración por tenant (`tenant.mcp_registry_path`).
+    """
+    if not path.exists() or not path.is_file():
+        raise MCPRegistryError(f"El registro MCP no existe o no es un archivo: {path}")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise MCPRegistryError(f"El archivo {path} no contiene JSON válido") from e
+    return _parse_registry(data)

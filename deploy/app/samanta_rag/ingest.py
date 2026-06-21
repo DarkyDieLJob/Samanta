@@ -20,12 +20,11 @@ from langchain_text_splitters import (
     RecursiveCharacterTextSplitter,
     MarkdownHeaderTextSplitter,
 )
-from langchain_ollama import OllamaEmbeddings
-from langchain_openai import OpenAIEmbeddings
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-from .config import settings
+from .config import TenantConfig, load_tenants, settings
+from .infrastructure.vectorstore.embeddings import build_embeddings
 from .constants import METADATA_FILENAME, SUPPORTED_EXTENSIONS
 from .logging_utils import configure_logging
 
@@ -198,15 +197,20 @@ def build_vectorstore(
     documents: List[Document],
     metadata_entries: List[FileMetadata],
     vectorstore_path: Path,
+    *,
+    embedding_provider: str = None,  # type: ignore[assignment]
+    embedding_model_name: str = None,  # type: ignore[assignment]
 ) -> Optional[FAISS]:
     if not documents:
         LOGGER.warning("No se encontraron documentos para indexar. Se mantiene el índice anterior.")
         return None
-    # Selección de embeddings según proveedor
-    if settings.llm_provider == "openai" and settings.openai_api_key:
-        embeddings = OpenAIEmbeddings(model=settings.embedding_model_name, api_key=settings.openai_api_key)
-    else:
-        embeddings = OllamaEmbeddings(model=settings.embedding_model_name, base_url=settings.ollama_base_url)
+    # Selección de embeddings según proveedor (independiente del chat)
+    embeddings = build_embeddings(
+        provider=embedding_provider or settings.embedding_provider,
+        model_name=embedding_model_name or settings.embedding_model_name,
+        ollama_base_url=settings.ollama_base_url,
+        openai_api_key=settings.openai_api_key,
+    )
     vectorstore = FAISS.from_documents(documents, embeddings)
     # Manejo seguro de borrado en raíces montadas
     safe_path = vectorstore_path
@@ -231,20 +235,22 @@ def build_vectorstore(
     return vectorstore
 
 
-def ingest_once() -> Optional[IngestStats]:
+def ingest_once(tenant: TenantConfig) -> Optional[IngestStats]:
     start = time.time()
-    documents_dir = settings.documents_path
+    documents_dir = tenant.documents_path
     if not documents_dir.exists():
-        LOGGER.error("El directorio de documentos %s no existe", documents_dir)
+        LOGGER.error("[%s] El directorio de documentos %s no existe", tenant.id, documents_dir)
         return None
     document_files = collect_markdown_documents(documents_dir)
     documents, metadata_entries = load_documents(document_files, documents_dir)
-    LOGGER.info("Recopilados %d documentos y %d chunks", len(document_files), len(documents))
+    LOGGER.info(
+        "[%s] Recopilados %d documentos y %d chunks", tenant.id, len(document_files), len(documents)
+    )
 
-    previous_metadata = load_previous_metadata(settings.vectorstore_path)
+    previous_metadata = load_previous_metadata(tenant.vectorstore_path)
     needs_update = metadata_changed(metadata_entries, previous_metadata)
-    if not needs_update and settings.vectorstore_path.exists():
-        LOGGER.info("No se detectaron cambios en los documentos. Se omite la reindexación.")
+    if not needs_update and tenant.vectorstore_path.exists():
+        LOGGER.info("[%s] Sin cambios en los documentos. Se omite la reindexación.", tenant.id)
         duration = time.time() - start
         return IngestStats(
             processed_files=len(document_files),
@@ -253,7 +259,13 @@ def ingest_once() -> Optional[IngestStats]:
             updated=False,
         )
 
-    vectorstore = build_vectorstore(documents, metadata_entries, settings.vectorstore_path)
+    vectorstore = build_vectorstore(
+        documents,
+        metadata_entries,
+        tenant.vectorstore_path,
+        embedding_provider=tenant.embedding_provider,
+        embedding_model_name=tenant.embedding_model_name,
+    )
     duration = time.time() - start
     return IngestStats(
         processed_files=len(document_files),
@@ -263,12 +275,18 @@ def ingest_once() -> Optional[IngestStats]:
     ) if vectorstore else None
 
 
-def watch_documents() -> None:
+def watch_documents(tenants: List[TenantConfig]) -> None:
     observer = Observer()
-    event_handler = MarkdownWatcher(lambda: _safe_ingest())
-    observer.schedule(event_handler, str(settings.documents_path), recursive=True)
+    for tenant in tenants:
+        if not tenant.documents_path.exists():
+            LOGGER.warning(
+                "[%s] No se observa %s (no existe)", tenant.id, tenant.documents_path
+            )
+            continue
+        event_handler = MarkdownWatcher(lambda t=tenant: _safe_ingest(t))
+        observer.schedule(event_handler, str(tenant.documents_path), recursive=True)
+        LOGGER.info("[%s] Monitoreo de documentos iniciado en %s", tenant.id, tenant.documents_path)
     observer.start()
-    LOGGER.info("Monitoreo de documentos iniciado en %s", settings.documents_path)
 
     stop_event = Event()
 
@@ -287,23 +305,38 @@ def watch_documents() -> None:
         observer.join()
 
 
-def _safe_ingest() -> None:
+def _safe_ingest(tenant: TenantConfig) -> None:
     try:
-        stats = ingest_once()
+        stats = ingest_once(tenant)
         if stats and stats.updated:
             LOGGER.info(
-                "Ingesta completada: %d archivos, %d chunks en %.2fs",
+                "[%s] Ingesta completada: %d archivos, %d chunks en %.2fs",
+                tenant.id,
                 stats.processed_files,
                 stats.total_chunks,
                 stats.duration_seconds,
             )
         elif stats:
             LOGGER.info(
-                "Ingesta saltada: %d archivos revisados sin cambios relevantes",
+                "[%s] Ingesta saltada: %d archivos revisados sin cambios relevantes",
+                tenant.id,
                 stats.processed_files,
             )
     except Exception:  # noqa: BLE001
-        LOGGER.exception("Fallo durante la ingesta")
+        LOGGER.exception("[%s] Fallo durante la ingesta", tenant.id)
+
+
+def _select_tenants(tenant_id: Optional[str], all_tenants: bool) -> List[TenantConfig]:
+    tenants, default_tenant = load_tenants(settings)
+    enabled = {tid: t for tid, t in tenants.items() if t.enabled}
+    if all_tenants:
+        return list(enabled.values())
+    target_id = tenant_id or default_tenant
+    tenant = enabled.get(target_id)
+    if tenant is None:
+        LOGGER.error("Tenant '%s' no existe o está deshabilitado", target_id)
+        return []
+    return [tenant]
 
 
 def cli_entrypoint() -> None:
@@ -313,21 +346,31 @@ def cli_entrypoint() -> None:
         action="store_true",
         help="Monitorea el directorio de documentos y reindexa al detectar cambios",
     )
+    parser.add_argument("--tenant", default=None, help="Ingesta un tenant específico por id")
+    parser.add_argument(
+        "--all", action="store_true", dest="all_tenants", help="Ingesta todos los tenants habilitados"
+    )
     args = parser.parse_args()
 
     configure_logging(settings.log_path)
 
-    stats = ingest_once()
-    if stats:
-        LOGGER.info(
-            "Ingesta inicial completada: %d archivos, %d chunks en %.2fs",
-            stats.processed_files,
-            stats.total_chunks,
-            stats.duration_seconds,
-        )
+    selected = _select_tenants(args.tenant, args.all_tenants)
+    if not selected:
+        return
+
+    for tenant in selected:
+        stats = ingest_once(tenant)
+        if stats:
+            LOGGER.info(
+                "[%s] Ingesta inicial: %d archivos, %d chunks en %.2fs",
+                tenant.id,
+                stats.processed_files,
+                stats.total_chunks,
+                stats.duration_seconds,
+            )
 
     if args.watch:
-        watch_documents()
+        watch_documents(selected)
 
 
 if __name__ == "__main__":

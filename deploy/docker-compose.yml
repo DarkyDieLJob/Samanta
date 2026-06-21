@@ -55,18 +55,26 @@ services:
       - LOG_PATH=${LOG_PATH:-/logs}
       - APP_TIMEZONE=${APP_TIMEZONE:-UTC}
       - RAG_FAISS_TOPK=${RAG_FAISS_TOPK:-0}
+      # Multi-tenant
+      - TENANTS_PATH=${TENANTS_PATH:-/data/tenants}
+      - DEFAULT_TENANT=${DEFAULT_TENANT:-teatro}
+      - LLM_PROVIDER
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-ollama}
+      - OPENAI_API_KEY
       - MCP_REGISTRY_JSON
       - MCP_REGISTRY_PATH
       #- MCP_CA_BUNDLE
       - PYTHONPATH=/app/src
-      # Tokens por proveedor MCP (definir en .env según corresponda)
+      # Tokens y endpoints por proveedor MCP (definir en .env según corresponda)
       - MCP_TOKEN_EVENTOS_DRF
       - MCP_TOKEN_TEATRO_BAR
+      - MCP_TEATRO_BAR_ENDPOINT
     volumes:
       - ./app:/app/src:ro
       - ./data/markdown:/data/markdown:ro
       - ./data/vectorstore:/data/vectorstore:Z
       - ./data/mcp:/data/mcp:ro
+      - ./data/tenants:/data/tenants:ro
       - ./logs:/logs:Z
     ports:
       - "7860:7860"
@@ -96,20 +104,28 @@ services:
       - LOG_PATH=${LOG_PATH:-/logs}
       - APP_TIMEZONE=${APP_TIMEZONE:-UTC}
       - RAG_FAISS_TOPK=${RAG_FAISS_TOPK:-0}
+      # Multi-tenant
+      - TENANTS_PATH=${TENANTS_PATH:-/data/tenants}
+      - DEFAULT_TENANT=${DEFAULT_TENANT:-teatro}
+      - LLM_PROVIDER
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-ollama}
+      - OPENAI_API_KEY
       - MCP_REGISTRY_JSON
       - MCP_REGISTRY_PATH
       #- MCP_CA_BUNDLE
       - PYTHONPATH=/app/src
-      # Tokens por proveedor MCP (definir en .env según corresponda)
+      # Tokens y endpoints por proveedor MCP (definir en .env según corresponda)
       - MCP_TOKEN_EVENTOS_DRF
       - MCP_TOKEN_TEATRO_BAR
+      - MCP_TEATRO_BAR_ENDPOINT
     volumes:
       - ./app:/app/src:ro
       - ./data/markdown:/data/markdown:ro
       - ./data/vectorstore:/data/vectorstore:Z
       - ./data/mcp:/data/mcp:ro
+      - ./data/tenants:/data/tenants:ro
       - ./logs:/logs:Z
-    command: ["uv", "run", "python", "-m", "samanta_rag.ingest", "--watch"]
+    command: ["uv", "run", "python", "-m", "samanta_rag.ingest", "--all", "--watch"]
 
 volumes:
   ollama_data:

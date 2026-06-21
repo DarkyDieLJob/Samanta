@@ -21,6 +21,7 @@ class QueryResult:
 
     answer: str
     sources: List[str]
+    cached: bool = False
 
 
 @dataclass(frozen=True)
