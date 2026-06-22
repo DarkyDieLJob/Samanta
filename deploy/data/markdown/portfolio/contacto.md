@@ -6,7 +6,7 @@
 - **Formulario de contacto**: disponible en el sitio (sección Contacto).
 - **Email**: admin@dieljob.com.ar
 - **GitHub**: github.com/DarkyDieLJob
-- **Demo de Samanta**: dieljob.online
+- **Demo de Samanta**: integrada en el propio portfolio (dieljob.com.ar) — el chat "Preguntá sobre mí".
 
 Si tu consulta no está cubierta acá, lo mejor es escribir por el formulario de contacto
 del sitio.

@@ -15,7 +15,7 @@ Asistente conversacional basado en RAG para negocios locales, en evolución haci
   El MCP se readapta como herramienta (tool) dentro del grafo multi-agente.
 - Embeddings desacoplados del proveedor de chat: chat con gpt-4o-mini (OpenAI) y
   embeddings con nomic-embed-text (Ollama).
-- Demo: dieljob.online
+- Demo en vivo: integrada en el portfolio (dieljob.com.ar), botón "Hablar con Samanta" / chat "Preguntá sobre mí".
 - Valor de negocio: atención automatizada 24/7 con respuestas trazables.
 
 ## Gestor de eventos — Teatro Bar Cultural (en producción)
