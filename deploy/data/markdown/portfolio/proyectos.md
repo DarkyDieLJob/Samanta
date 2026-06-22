@@ -27,6 +27,13 @@ Asistente conversacional basado en RAG para negocios locales, en evolución haci
 - Hoy expone un **servidor MCP** que Samanta consume: un activo de alto valor y foso
   competitivo.
 
+## GestionGastronomica (en evolución)
+
+- Stack: Django, Tailwind CSS, Docker, con tests y CI.
+- Reescritura del gestor gastronómico (línea Teatro Bar Cultural) sobre la plantilla
+  propia **DjangoProyects**, con arquitectura limpia.
+- Hereda y moderniza la gestión de eventos, ventas y operaciones del salón.
+
 ## Sistema de gestión para ferretería (en producción)
 
 - Stack: Python puro + SQLite, servidor dedicado en Raspberry Pi (Raspbian).
@@ -35,11 +42,58 @@ Asistente conversacional basado en RAG para negocios locales, en evolución haci
 - Carritos por empleado, facturación A y B con impresoras fiscales, marcado de
   faltantes y generación de pedidos en PDF.
 
+## GestionFerreteria (reescritura en Django)
+
+- Stack: Django, Celery + Redis, Docker, CI/CD.
+- Nueva versión del sistema de ferretería generada desde la plantilla **DjangoProyects**,
+  con arquitectura limpia.
+- Procesamiento en background con **colas de tareas** (Celery + Redis) para importaciones
+  masivas de listas de proveedores.
+
+## impresor_comandera (en desarrollo)
+
+- Stack: Python, PySide6 (GUI), FastAPI, SQLite, python-escpos; empaquetado con py2exe
+  para Windows.
+- Servicio de impresión de comandas/tickets en impresoras de red **ESC/POS**.
+- Unifica dos canales de entrada: API HTTP y un archivo sincronizado con Google Drive.
+- Editor de plantillas de ticket, administración de impresoras, monitor de trabajos y
+  reimpresiones controladas. Evolución del script original `comandera.py`.
+
 ## OutpostIdle (en desarrollo)
 
-- Stack: Godot + FastAPI + Python.
-- MMORPG sandbox con economía impulsada por jugadores.
-- Arquitectura cliente-servidor: Godot para render/UI, FastAPI para lógica y persistencia.
+- Stack: Godot + FastAPI + Python (3.12+, gestionado con `uv`).
+- MMORPG sandbox con economía impulsada por jugadores (trueque, monedas crafteables,
+  bolsa de valores de precios históricos).
+- Arquitectura cliente-servidor estricta: Godot solo render/UI/input; FastAPI toda la
+  lógica de negocio, validación y persistencia.
+- Sistema de profesiones, NPCs dinámicos (el personaje sigue activo al desconectarse),
+  mundo vacío construido por los jugadores. Decisiones documentadas en ADRs.
+
+## DjangoProyects (plantilla / activo propio)
+
+- Stack: Django, arquitectura limpia, CLI unificado, Docker listo para producción.
+- **GitHub Template Repository**: base reutilizable de la que se generan los proyectos
+  derivados (p. ej. `GestionFerreteria` y `GestionGastronomica`).
+- Sincronización bidireccional base ↔ derivados para propagar mejoras comunes.
+- Es un **foso competitivo**: acelera el arranque de cada nuevo sistema de cliente.
+
+## GeneradorTarjetasClubSocial
+
+- Stack: Python, Flask, Pillow; gestión de dependencias con `uv`.
+- App web que genera tarjetas de socios con **códigos de barras** a partir de un CSV.
+- Previsualización en el navegador y exportación a **PDF en grilla** lista para imprimir.
+
+## Generador de tarjetas QR A4 (dayana impresion qr)
+
+- Stack: HTML + JS 100% client-side (PapaParse, SheetJS/xlsx, qrcode.js). Sin backend.
+- Carga un CSV/Excel + logo y genera una grilla A4 de tarjetas con **código QR**, título
+  y descripción, lista para imprimir o exportar a PDF desde el navegador.
+
+## agente-ia (laboratorio de automatización)
+
+- Stack: **n8n** + **Ollama** orquestados con Docker Compose.
+- Entorno para diseñar flujos de automatización con LLMs locales; banco de pruebas para
+  automatizaciones de clientes antes de productivizarlas.
 
 ## Portfolio personal
 

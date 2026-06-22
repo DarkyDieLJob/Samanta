@@ -31,9 +31,19 @@
 - Gestión de secretos y configuración por entorno.
 - Despliegue en la nube (sin depender de la máquina local).
 
+## Plataforma y automatización
+
+- **DjangoProyects**: plantilla base (GitHub Template) con arquitectura limpia, CLI
+  unificado y dockerización; genera proyectos derivados con sync bidireccional.
+- **Celery + Redis**: colas de tareas y procesamiento en background.
+- **n8n + Ollama**: automatización de flujos con LLMs locales.
+- **CI/CD** y tooling de calidad (tests, pre-commit) en los proyectos sobre la plantilla.
+
 ## Complementos
 
-- JavaScript, HTML/CSS, Bootstrap.
+- JavaScript, HTML/CSS, Bootstrap, Tailwind CSS.
+- **Flask** y **PySide6** (apps de escritorio y utilidades web puntuales).
 - Godot / GDScript (videojuegos).
-- APIs REST e integración con hardware (impresoras fiscales, lectores de huella).
-- Google Drive API.
+- APIs REST e integración con hardware: impresoras fiscales, impresoras **ESC/POS**
+  (python-escpos), lectores de huella, generación de códigos de barras y **QR**.
+- Google Drive API; gestión de dependencias con `uv`.

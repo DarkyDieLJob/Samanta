@@ -31,6 +31,24 @@ Gestor de eventos en Django, más automatizaciones internas:
   los sistemas de futuros clientes.
 - Adopción de prácticas profesionales: idempotencia, validación, observabilidad,
   reintentos y despliegue en la nube.
+- Laboratorio de automatización con **n8n + Ollama** (proyecto `agente-ia`) para
+  prototipar flujos con LLMs locales antes de llevarlos a clientes.
+
+## Plataforma propia y reescritura de sistemas (2025 — presente)
+
+- Creación de **DjangoProyects**, una plantilla base (GitHub Template) con arquitectura
+  limpia, CLI, Docker y sincronización base ↔ derivados: baja el costo de arranque de
+  cada nuevo cliente.
+- Reescritura de los sistemas legados sobre esa plantilla: **GestionFerreteria** (v4, con
+  colas Celery + Redis) y **GestionGastronomica** (línea Teatro Bar Cultural).
+- Sincronización bidireccional base ↔ derivados para propagar mejoras comunes.
+
+## Utilidades e integración con hardware (continuo)
+
+- `impresor_comandera`: servicio de impresión ESC/POS (PySide6 + FastAPI + SQLite) que
+  unifica entrada por API y por archivo de Google Drive, empaquetado para Windows.
+- Generadores de tarjetas para imprimir: con códigos de barras (Flask + Pillow) y con
+  códigos QR en grilla A4 (100% en el navegador).
 
 ## Formación
 
